@@ -2,6 +2,6 @@
 // La clé « anon » est faite pour être publique : ce sont les règles de la base qui protègent les données.
 // Tant que ces deux lignes sont vides, le site fonctionne en mode démonstration (rien n'est partagé).
 window.TENUES_CONFIG = {
-  SUPABASE_URL: "",
-  SUPABASE_ANON_KEY: ""
+  SUPABASE_URL: "https://avkiltvnddwtqsnwtyit.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_lCJbvYlLorIEaddXZwaiZA_gWn7-1FK"
 };
