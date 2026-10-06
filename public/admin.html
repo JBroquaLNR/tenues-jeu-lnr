@@ -312,12 +312,13 @@ dialog::backdrop{background:rgba(8,12,18,.55)}
 
 <main class="wrap" id="main"><p class="vide-etat">Chargement des tenues de la saison…</p></main>
 
-<footer class="wrap pied">Tenues de jeu LNR · V0.1.0</footer>
+<footer class="wrap pied">Tenues de jeu LNR · V0.2.0</footer>
 <dialog id="fiche" aria-labelledby="fiche-titre"></dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="config.js"></script>
 <script src="lib/supabase.js"></script>
+<script src="commun.js"></script>
 <script>
 (function(){
 "use strict";
@@ -328,49 +329,18 @@ const COMPS=["TOP 14","PRO D2"], ATTENDU={"TOP 14":3,"PRO D2":2}, TYPES=["Domici
 const PIXEL="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 
 let D=null, clubs={}, kits={}, decisions={}, dbTenues={}, dbClubs={};
-let store=null, monId="", connecte=false;
+let store=null, monId="", connecte=false, liens={};
 const lecture=false;
 const etat={view:"suivi",comp:"TOP 14",mode:"club",club:null,j:1,filtre:"tous",fiche:null,tenue:null,dlg:null,mail:null};
 let brouillon=null, modifie=false, apercu=null, pipette="m1";
 try{const m=localStorage.getItem("tenues.mode"); if(m==="club"||m==="journee") etat.mode=m; const c=localStorage.getItem("tenues.comp"); if(COMPS.includes(c)) etat.comp=c;}catch(e){}
 
 const dateFr=(iso,h)=>{const d=new Date(iso); if(isNaN(d)) return ""; return d.toLocaleDateString("fr-FR",{day:"numeric",month:"short"})+(h?" · "+d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"");};
-const num=v=>{const n=parseFloat(String(v==null?"":v).replace(",",".")); return isFinite(n)?n:0;};
-const fmt=n=>(Math.round(n*10)/10).toLocaleString("fr-FR");
 const slug=s=>s.normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
 const qui=x=>typeof x==="string"?x:"";
+const {num,fmt,EMPL,ZONES,CDC,controle,DEFAUT,MOTIF_LIB,MOTIFS,GAB,image,chargerGabarits,peindre,detecter,alleger,rasteriser,nettoyerPubs}=window.LNR;
 
 /* ---------- Cahier des charges publicités (repris du formulaire 2026-2027) ---------- */
-const POS_DEV=["Cœur","Poitrine droite","Médaillon","Au-dessus principal","En-dessous principal"], POS_DOS=["Au-dessus du numéro","En-dessous du numéro"];
-const EMPL=[
- {id:"dev1",lab:"Devant maillot principal",zone:"avant",max:580},
- {id:"dev2",lab:"Devant maillot 2e emplacement",zone:"avant",max:185,pos:POS_DEV},
- {id:"dev3",lab:"Devant maillot 3e emplacement",zone:"avant",max:185,pos:POS_DEV},
- {id:"dev4",lab:"Devant maillot 4e emplacement",zone:"avant",max:185,pos:POS_DEV},
- {id:"manche",lab:"Manche gauche",zone:"manche",max:185},
- {id:"dos1",lab:"Dos maillot 1er emplacement",zone:"dos",max:350,pos:POS_DOS},
- {id:"dos2",lab:"Dos maillot 2e emplacement",zone:"dos",max:350,pos:POS_DOS},
- {id:"dos3",lab:"Dos maillot 3e emplacement",zone:"dos",max:350,pos:POS_DOS},
- {id:"shad",lab:"Avant short droit",zone:"short",max:160},
- {id:"shag",lab:"Avant short gauche",zone:"short",max:160},
- {id:"shdp",lab:"Dos short principal",zone:"short",max:250},
- {id:"shrd",lab:"Arrière short droit",zone:"short",max:160},
- {id:"shrg",lab:"Arrière short gauche",zone:"short",max:160}];
-const ZONES={avant:"Devant du maillot · 1 000 cm² au total",manche:"Manche",dos:"Dos du maillot · 850 cm² au total",short:"Short"};
-const CDC={pubs:10,avant:1000,dos:850};
-function controle(pubs){
-  const lignes={}, anomalies=[]; let n=0; const tot={avant:0,dos:0,manche:0,short:0};
-  for(const s of EMPL){const p=pubs&&pubs[s.id]; if(!p||!(p.nom||num(p.l)||num(p.h))) continue; n++;
-    const a=num(p.l)*num(p.h); lignes[s.id]={a,ok:a>0&&a<=s.max}; tot[s.zone]+=a;
-    if(!a) anomalies.push(`${s.lab} : dimensions manquantes`); else if(a>s.max) anomalies.push(`${s.lab} : ${fmt(a)} cm² pour ${s.max} cm² autorisés`);
-    if(s.pos&&!p.pos) anomalies.push(`${s.lab} : position à préciser`);
-    if(!p.nom) anomalies.push(`${s.lab} : nom du partenaire manquant`);
-  }
-  if(n>CDC.pubs) anomalies.push(`${n} publicités pour ${CDC.pubs} autorisées`);
-  if(tot.avant>CDC.avant) anomalies.push(`Devant du maillot : ${fmt(tot.avant)} cm² au total pour ${CDC.avant} autorisés`);
-  if(tot.dos>CDC.dos) anomalies.push(`Dos du maillot : ${fmt(tot.dos)} cm² au total pour ${CDC.dos} autorisés`);
-  return {lignes,anomalies,n,tot};
-}
 
 /* ---------- Modèle : catalogue 2026-2027 + ce qui est saisi sur la plateforme ---------- */
 function listeClubs(comp){
@@ -453,40 +423,13 @@ function toutesPaires(){
 }
 
 /* ---------- Gabarits recolorés ---------- */
-const GAB={}, GEN={m1:"#f2c400",m2:"#12213f",motif:"cercle",s1:"#12213f",c1:"#f2c400",c2:"#12213f"};
-const DEFAUT={m1:"#ffffff",m2:"#ffffff",motif:"uni",s1:"#ffffff",c1:"#ffffff",c2:"#ffffff"};
-const MOTIF_LIB=[["uni","Uni"],["cercle","Cerclé (bandes horizontales)"],["vertical","Rayé vertical"],["hautbas","Bicolore haut / bas"],["miparti","Mi-parti gauche / droite"],["quartiers","Quartiers"],["manches","Manches contrastées"]];
+const GEN={m1:"#f2c400",m2:"#12213f",motif:"cercle",s1:"#12213f",c1:"#f2c400",c2:"#12213f"};
 const PRESETS=[["Rouge uni",{m1:"#d90f0f",m2:"#d90f0f",motif:"uni",s1:"#d90f0f",c1:"#d90f0f",c2:"#d90f0f"}],
   ["Jaune et marine cerclé",{m1:"#f2c400",m2:"#12213f",motif:"cercle",s1:"#12213f",c1:"#f2c400",c2:"#12213f"}],
   ["Ciel et blanc bicolore",{m1:"#7fb2e8",m2:"#ffffff",motif:"hautbas",s1:"#ffffff",c1:"#ffffff",c2:"#7fb2e8"}],
   ["Blanc et grenat en quartiers",{m1:"#ffffff",m2:"#5a1730",motif:"quartiers",s1:"#ffffff",c1:"#ffffff",c2:"#5a1730"}],
   ["Noir, manches rouges",{m1:"#16181c",m2:"#c8102e",motif:"manches",s1:"#16181c",c1:"#16181c",c2:"#c8102e"}],
   ["Vert et blanc rayé",{m1:"#0d4a33",m2:"#ffffff",motif:"vertical",s1:"#0d4a33",c1:"#0d4a33",c2:"#ffffff"}]];
-const image=src=>new Promise((ok,ko)=>{const i=new Image(); i.onload=()=>ok(i); i.onerror=ko; i.src=src;});
-let gabP=null;
-function chargerGabarits(){
-  if(!gabP) gabP=(async()=>{ for(const p of ["maillot","short","chaussettes"]) GAB[p]={ombre:await image(`gabarits/${p}_ombre.png`),detail:await image(`gabarits/${p}_detail.png`)}; GAB.pret=true; })();
-  return gabP;
-}
-const MOTIFS={
-  uni:(c,w,h,a)=>{c.fillStyle=a;c.fillRect(0,0,w,h);},
-  cercle:(c,w,h,a,b)=>{const n=9,t=h/n;for(let i=0;i<n;i++){c.fillStyle=i%2?b:a;c.fillRect(0,i*t,w,t+1);}},
-  vertical:(c,w,h,a,b)=>{const n=13,t=w/n;for(let i=0;i<n;i++){c.fillStyle=i%2?b:a;c.fillRect(i*t,0,t+1,h);}},
-  hautbas:(c,w,h,a,b)=>{c.fillStyle=b;c.fillRect(0,0,w,h);c.fillStyle=a;c.fillRect(0,0,w,h*.42);},
-  miparti:(c,w,h,a,b)=>{c.fillStyle=a;c.fillRect(0,0,w/2,h);c.fillStyle=b;c.fillRect(w/2,0,w/2,h);},
-  quartiers:(c,w,h,a,b)=>{c.fillStyle=a;c.fillRect(0,0,w,h);c.fillStyle=b;c.fillRect(w/2,0,w/2,h*.52);c.fillRect(0,h*.52,w/2,h*.48);},
-  manches:(c,w,h,a,b)=>{c.fillStyle=a;c.fillRect(0,0,w,h);c.fillStyle=b;c.beginPath();c.moveTo(0,0);c.lineTo(w*.2,0);c.lineTo(w*.26,h*.52);c.lineTo(0,h*.52);c.fill();c.beginPath();c.moveTo(w,0);c.lineTo(w*.8,0);c.lineTo(w*.74,h*.52);c.lineTo(w,h*.52);c.fill();}
-};
-function peindre(cv,part,co){
-  const g=GAB[part], w=g.ombre.naturalWidth,h=g.ombre.naturalHeight; cv.width=w; cv.height=h; const c=cv.getContext("2d");
-  c.clearRect(0,0,w,h);
-  if(part==="maillot") (MOTIFS[co.motif]||MOTIFS.uni)(c,w,h,co.m1,co.m2||co.m1);
-  else if(part==="short") MOTIFS.uni(c,w,h,co.s1||co.m1);
-  else {c.fillStyle=co.c1||co.m1;c.fillRect(0,0,w,h);c.fillStyle=co.c2||co.c1||co.m1;c.fillRect(0,0,w,h*.2);}
-  c.globalCompositeOperation="multiply"; c.drawImage(g.ombre,0,0);
-  c.globalCompositeOperation="destination-in"; c.drawImage(g.ombre,0,0);
-  c.globalCompositeOperation="source-over"; c.drawImage(g.detail,0,0);
-}
 const vigCache={};
 function vignette(part,co){
   if(!co||!co.m1) return PIXEL;
@@ -550,11 +493,11 @@ function vueSuivi(){
     return `<section class="bloc-club"><header>${C.logo?`<img src="${C.logo}" alt="">`:""}<h3>${esc(C.nom)}</h3>
       <div class="meta"><span>Relances assurées par : <b>${esc(C.relancePar||"à désigner")}</b></span>${dr?`<span>Dernière relance : <b>${dateFr(dr.le)}</b>${qui(dr.par)?" par "+esc(qui(dr.par)):""}</span>`:""}</div>
       <div class="actions">${B.manq+B.corr?`<span class="pill ${B.corr?"ko":"doute"}">${B.manq?B.manq+" non reçue"+(B.manq>1?"s":""):""}${B.manq&&B.corr?" · ":""}${B.corr?B.corr+" à corriger":""}</span>`:""}
-        ${lecture?"":`<button class="btn petit" data-relance="${C.id}">Relances</button><button class="btn petit" data-ajout-tenue="${C.id}">Ajouter une tenue</button>`}</div></header>
+        ${lecture?"":`<button class="btn petit" data-lien="${C.id}">Lien club</button><button class="btn petit" data-relance="${C.id}">Relances</button><button class="btn petit" data-ajout-tenue="${C.id}">Ajouter une tenue</button>`}</div></header>
       <div class="tbox"><table class="suivi"><thead><tr><th>Tenue</th><th>BAT</th><th>Design</th><th>Partenaires</th><th>Cahier des charges</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
   }).join("");
   return `<div class="view-head"><div><h2>Suivi des dépôts</h2><p>Une ligne par tenue : le BAT reçu, la validation du design et celle des partenaires. ${ATTENDU[etat.comp]} tenues attendues par club en ${etat.comp}, davantage si le club en présente.</p></div>
-    <div class="rang"><button class="btn" id="b-import">Importer des relevés</button><input type="file" id="f-releves" accept="application/json,.json" hidden><button class="btn" data-nouveau-club>Ajouter un club</button></div></div>
+    <div class="rang"><button class="btn" id="b-liens">Copier les liens des clubs</button><button class="btn" id="b-import">Importer des relevés</button><input type="file" id="f-releves" accept="application/json,.json" hidden><button class="btn" data-nouveau-club>Ajouter un club</button></div></div>
     <div class="compteurs"><div><b>${tot}</b><span>tenues attendues ou reçues</span></div><div><b>${recu}</b><span>reçues</span></div><div class="ok"><b>${val}</b><span>entièrement validées</span></div><div class="${corr?"ko":""}"><b>${corr}</b><span>à corriger</span></div><div class="${manq?"doute":""}"><b>${manq}</b><span>non reçues</span></div></div>
     ${blocs||`<p class="vide-etat">Aucun club de ${etat.comp} pour l'instant. Ajoutez un club pour ouvrir ses dépôts.</p>`}`;
 }
@@ -586,7 +529,7 @@ function blocValid(T,cle2,titre,statut){
   const v=T.doc[cle2]||{};
   return `<section><h4>${titre}${pill(statut)}</h4>
     ${v.le?`<span class="note" style="margin:0">${v.statut==="valide"?"Validé":"Correction demandée"} le ${dateFr(v.le)}${qui(v.par)?" par "+esc(qui(v.par)):""}${v.com?` : « ${esc(v.com)} »`:""}</span>`:""}
-    ${lecture?"":`<label class="champ v" for="com-${cle2}"><span>Commentaire</span><textarea id="com-${cle2}" placeholder="Facultatif pour une validation, attendu pour une correction"></textarea></label>
+    ${lecture?"":`<label class="champ v" for="com-${cle2}"><span>Commentaire, visible par le club</span><textarea id="com-${cle2}" placeholder="Facultatif pour une validation, attendu pour une correction"></textarea></label>
     <div class="rang"><button class="btn ok" data-valider="${cle2}">Valider</button><button class="btn ko" data-corriger="${cle2}">Demander une correction</button></div>`}</section>`;
 }
 function vueDossier(){
@@ -636,33 +579,6 @@ function apresDossier(){
 }
 
 /* ---------- BAT : aperçu, dépôt, couleurs détectées ---------- */
-function detecter(cv){
-  const t=document.createElement("canvas"), sc=150/Math.max(cv.width,cv.height); t.width=Math.max(1,Math.round(cv.width*sc)); t.height=Math.max(1,Math.round(cv.height*sc));
-  const c=t.getContext("2d"); c.drawImage(cv,0,0,t.width,t.height); const d=c.getImageData(0,0,t.width,t.height).data, bins={};
-  for(let i=0;i<d.length;i+=4){ const r=d[i],g=d[i+1],b=d[i+2], mx=Math.max(r,g,b), mn=Math.min(r,g,b); if(mn>232) continue; if(mx-mn<14&&mx>150) continue;
-    const k=(r>>4)<<8|(g>>4)<<4|(b>>4), o=bins[k]||(bins[k]=[0,0,0,0]); o[0]+=r;o[1]+=g;o[2]+=b;o[3]++; }
-  const out=[];
-  for(const x of Object.values(bins).map(o=>({r:o[0]/o[3],g:o[1]/o[3],b:o[2]/o[3],n:o[3]})).sort((a,b)=>b.n-a.n)){ const m=out.find(y=>Math.hypot(y.r-x.r,y.g-x.g,y.b-x.b)<42); if(m) m.n+=x.n; else if(out.length<12) out.push(x); }
-  const tot=out.reduce((s,x)=>s+x.n,0)||1;
-  return out.sort((a,b)=>b.n-a.n).filter(x=>x.n/tot>.02).slice(0,8).map(x=>"#"+[x.r,x.g,x.b].map(v=>Math.round(v).toString(16).padStart(2,"0")).join("")).concat(["#ffffff"]);
-}
-function alleger(cv){ const sc=Math.min(1,1800/Math.max(cv.width,cv.height)), t=document.createElement("canvas"); t.width=Math.round(cv.width*sc); t.height=Math.round(cv.height*sc); const c=t.getContext("2d"); c.fillStyle="#fff"; c.fillRect(0,0,t.width,t.height); c.drawImage(cv,0,0,t.width,t.height);
-  return new Promise((ok,ko)=>t.toBlob(b=>b?ok(b):ko(new Error("image")),"image/jpeg",.82)); }
-let pdfP=null;
-function chargerPdf(){ if(!pdfP) pdfP=new Promise((ok,ko)=>{const s=document.createElement("script"); s.src="lib/pdf.min.js"; s.onload=()=>{try{window.pdfjsLib.GlobalWorkerOptions.workerSrc="lib/pdf.worker.min.js"; ok(window.pdfjsLib);}catch(e){ko(e);}}; s.onerror=ko; document.head.appendChild(s);}); return pdfP; }
-async function rasteriser(blob,type){
-  const cv=document.createElement("canvas"); let texte="";
-  if(type==="application/pdf"){
-    const lib=await chargerPdf(), doc=await lib.getDocument({data:await blob.arrayBuffer()}).promise, page=await doc.getPage(1);
-    const v0=page.getViewport({scale:1}), sc=Math.min(3,2400/Math.max(v0.width,v0.height)), vp=page.getViewport({scale:sc});
-    cv.width=Math.round(vp.width); cv.height=Math.round(vp.height); const c=cv.getContext("2d"); c.fillStyle="#fff"; c.fillRect(0,0,cv.width,cv.height);
-    await page.render({canvasContext:c,viewport:vp}).promise;
-    try{ texte=(await page.getTextContent()).items.map(i=>i.str).join(" ").replace(/\s+/g," ").slice(0,3000); }catch(e){}
-  }else{
-    const url=URL.createObjectURL(blob); try{ const im=await image(url), sc=Math.min(1,2400/Math.max(im.naturalWidth,im.naturalHeight)); cv.width=Math.round(im.naturalWidth*sc); cv.height=Math.round(im.naturalHeight*sc); const c=cv.getContext("2d"); c.fillStyle="#fff"; c.fillRect(0,0,cv.width,cv.height); c.drawImage(im,0,0,cv.width,cv.height);} finally{URL.revokeObjectURL(url);}
-  }
-  return {canvas:cv,texte};
-}
 async function chargerApercu(){
   const id=etat.tenue, r=trouverTenue(id); if(!r) return; const vs=versions(r.T), v=vs[vs.length-1]; if(!v) return;
   if(apercu&&apercu.asset===v.asset) return afficherApercu();
@@ -705,7 +621,6 @@ async function ecrireClub(id,patch){
   const d=Object.assign({},dbClubs[id]||{},patch); dbClubs[id]=d; rendre();
   try{ await store.ecrire("clubs",id,d); }catch(e){ echec(e); }
 }
-function nettoyerPubs(p){ const o={}; for(const s of EMPL){const x=p[s.id]; if(!x||!(x.nom||num(x.l)||num(x.h))) continue; o[s.id]={nom:(x.nom||"").slice(0,80),secteur:(x.secteur||"").slice(0,60),pos:x.pos||"",l:num(x.l)||"",h:num(x.h)||""};} return o; }
 async function enregistrerSaisie(){
   const b=brouillon, pubs=nettoyerPubs(b.pubs), n=Object.keys(pubs).length;
   modifie=false;
@@ -784,6 +699,10 @@ function ouvrirDlg(type,arg){ etat.dlg={type,arg}; rendreDlg(); const d=$("#fich
 function rendreDlg(){
   const g=etat.dlg; if(!g) return; const d=$("#fiche");
   if(g.type==="paire") return rendreFiche(g.arg[0],g.arg[1]);
+  if(g.type==="lien"){ const C=clubDe(g.arg); if(!C) return; const j=liens[C.id];
+    d.innerHTML=`<div class="fiche"><div><div class="eyebrow">Espace club</div><h3 id="fiche-titre">${esc(C.nom)}</h3></div>
+      ${j?`<p class="note" style="margin:0">Transmettez ce lien au club. Toute personne qui le détient peut déposer des tenues au nom du club et voir l'état de ses dossiers.</p><input type="text" id="l-url" readonly value="${esc(urlClub(j))}" aria-label="Lien de l'espace club">`:`<p class="note" style="margin:0">Ce club n'a pas encore de lien.</p>`}
+      <footer><button class="btn lien" data-fermer>Fermer</button><div class="rang">${j?`<button class="btn ${g.confirme?"ko":""}" data-lien-regen="${C.id}">${g.confirme?"Confirmer : l'ancien lien ne marchera plus":"Régénérer le lien"}</button><button class="btn plein" data-lien-copier>Copier le lien</button>`:`<button class="btn plein" data-lien-creer="${C.id}">Créer le lien</button>`}</div></footer></div>`; return; }
   if(g.type==="relance"){ const C=clubDe(g.arg); if(!C) return; const B=bilanClub(C), dr=(C.relances||[]).slice(-1)[0];
     const manq=B.ts.filter(T=>statutDesign(T)==="attendu").map(T=>T.type), corr=B.ts.filter(T=>statutDesign(T)==="corriger"||statutPart(T)==="corriger").map(T=>T.type);
     d.innerHTML=`<div class="fiche"><div><div class="eyebrow">Relances</div><h3 id="fiche-titre">${esc(C.nom)}</h3></div>
@@ -872,6 +791,11 @@ document.addEventListener("click",e=>{
   if(t.id==="b-import") return $("#f-releves").click();
   if(ds.valider) return statuer(ds.valider,"valide");
   if(ds.corriger) return statuer(ds.corriger,"corriger");
+  if(ds.lien) return ouvrirDlg("lien",ds.lien);
+  if(ds.lienCreer) return definirLien(ds.lienCreer).then(()=>rendreDlg());
+  if(ds.lienRegen){ if(!etat.dlg.confirme){ etat.dlg.confirme=true; return rendreDlg(); } return definirLien(ds.lienRegen).then(ok=>{ etat.dlg.confirme=false; rendreDlg(); if(ok) toast("Nouveau lien créé. L'ancien ne fonctionne plus."); }); }
+  if("lienCopier" in ds) return copier($("#l-url").value,"Lien copié.");
+  if(t.id==="b-liens") return copierLiens();
   if(ds.relance) return ouvrirDlg("relance",ds.relance);
   if(ds.relSave){ ecrireClub(ds.relSave,{relancePar:$("#c-rel").value.trim().slice(0,80)}); return $("#fiche").close(); }
   if(ds.noterRelance){ const C=clubDe(ds.noterRelance); ecrireClub(C.id,{relancePar:$("#c-rel").value.trim().slice(0,80),relances:(C.relances||[]).concat([{le:new Date().toISOString(),par:monId||null}]).slice(-30)}); $("#fiche").close(); return toast("Relance notée."); }
@@ -907,6 +831,23 @@ async function enregistrerPng(){
   o.toBlob(b=>{ if(!b) return; const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download="tenue-visuel.png"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); },"image/png");
 }
 
+/* ---------- Liens des espaces club ---------- */
+const urlClub=j=>new URL("club.html#"+j,location.href).href;
+async function copier(txt,ok){ try{ await navigator.clipboard.writeText(txt); toast(ok); }catch(e){ const i=$("#l-url"); if(i){ i.focus(); i.select(); } toast("Copie automatique refusée : sélectionnez le texte et copiez-le."); } }
+async function definirLien(id){
+  const j=crypto.randomUUID();
+  try{ await store.definirLien(id,j); liens[id]=j; return true; }
+  catch(e){ toast("Le lien n'a pas pu être créé. Vérifiez que le script V0.2.0 a bien été lancé dans Supabase."); return false; }
+}
+async function copierLiens(){
+  const cs=listeClubs(etat.comp); let crees=0;
+  for(const C of cs){ if(!liens[C.id]){ if(!(await definirLien(C.id))) return; crees++; } }
+  const txt=cs.map(C=>C.nom+"\t"+urlClub(liens[C.id])).join("\n");
+  try{ await navigator.clipboard.writeText(txt); toast(`${cs.length} liens ${etat.comp} copiés${crees?` (${crees} créés à l'instant)`:""} : collez-les dans un tableur.`); }
+  catch(e){ toast("Copie automatique refusée. Ouvrez « Lien club » sur chaque club pour copier son lien."); }
+}
+function sain(v){ const c=v.couleurs; if(c&&typeof c==="object"){ for(const k of ["m1","m2","s1","c1","c2"]) if(c[k]!=null&&!/^#[0-9a-f]{6}$/i.test(c[k])) delete c[k]; if(c.motif&&!MOTIFS[c.motif]) c.motif="uni"; } else delete v.couleurs; return v; }
+
 /* ---------- Import des relevés du Lecteur de BAT ---------- */
 async function importerReleves(file){
   let d; try{ d=JSON.parse(await file.text()); }catch(e){ return toast("Ce fichier n'est pas un fichier de relevés lisible."); }
@@ -936,25 +877,30 @@ function storeSupabase(url,cle){
     async charger(){ const out={}; for(const t of ["decisions","clubs","tenues"]){ out[t]={}; for(let de=0;;de+=1000){ const rows=ok(await sb.from(t).select("id,data").order("id").range(de,de+999)); rows.forEach(r=>{out[t][r.id]=r.data;}); if(rows.length<1000) break; } } return out; },
     async ecrire(t,id,data){ ok(await sb.from(t).upsert({id,data,maj:new Date().toISOString()})); },
     async supprimer(t,id){ ok(await sb.from(t).delete().eq("id",id)); },
+    async liens(){ const o={}; ok(await sb.from("liens").select("club_id,jeton").limit(1000)).forEach(r=>{o[r.club_id]=r.jeton;}); return o; },
+    async definirLien(club,jeton){ ok(await sb.from("liens").upsert({club_id:club,jeton,maj:new Date().toISOString()})); },
     async deposer(chemin,blob){ ok(await sb.storage.from("bat").upload(chemin,blob,{contentType:"image/jpeg",upsert:false})); },
     async lire(chemin){ return ok(await sb.storage.from("bat").download(chemin)); } };
 }
 function storeLocal(){
-  const CLE="tenues-lnr.demo", images={}; let base={decisions:{},clubs:{},tenues:{}};
-  try{ const b=JSON.parse(localStorage.getItem(CLE)||"null"); if(b&&b.tenues) base=b; }catch(_){ }
+  const CLE="tenues-lnr.demo", images={}; let base={decisions:{},clubs:{},tenues:{},liens:{}};
+  try{ const b=JSON.parse(localStorage.getItem(CLE)||"null"); if(b&&b.tenues) base=Object.assign(base,b); }catch(_){ }
   const sauve=()=>{ try{localStorage.setItem(CLE,JSON.stringify(base));}catch(_){ } };
   return { mode:"local",
     async session(){ return {}; }, async connecter(){}, async deconnecter(){},
-    async charger(){ return JSON.parse(JSON.stringify(base)); },
+    async charger(){ try{ const b=JSON.parse(localStorage.getItem(CLE)||"null"); if(b&&b.tenues) base=Object.assign(base,b); }catch(_){ } return JSON.parse(JSON.stringify(base)); },
     async ecrire(t,id,data){ base[t][id]=JSON.parse(JSON.stringify(data)); sauve(); },
     async supprimer(t,id){ delete base[t][id]; sauve(); },
+    async liens(){ return Object.assign({},base.liens); },
+    async definirLien(club,jeton){ base.liens[club]=jeton; sauve(); },
     async deposer(chemin,blob){ images[chemin]=blob; },
     async lire(chemin){ if(!images[chemin]) throw new Error("absent"); return images[chemin]; } };
 }
 async function recharger(annonce){
   try{
     const b=await store.charger();
-    const t={}; for(const k in b.tenues){ const v=b.tenues[k]; if(v&&typeof v.club==="string") t[k]=v; }
+    const t={}; for(const k in b.tenues){ const v=b.tenues[k]; if(v&&typeof v.club==="string") t[k]=sain(v); }
+    try{ liens=await store.liens(); }catch(_){ liens={}; }
     if(etat.view==="dossier"&&etat.tenue&&dbTenues[etat.tenue]&&!t[etat.tenue]) t[etat.tenue]=dbTenues[etat.tenue];
     dbClubs=b.clubs||{}; dbTenues=t; reconstruire();
     const d2={}; for(const k in b.decisions){ const v=b.decisions[k], p=k.split("~"); if(v&&LIB[v.v]&&p.length===2&&kits[p[0]]&&kits[p[1]]) d2[k]={v:v.v,at:String(v.at||""),by:typeof v.by==="string"?v.by:null}; }

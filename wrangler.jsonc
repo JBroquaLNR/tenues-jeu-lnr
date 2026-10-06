@@ -1,0 +1,6 @@
+{
+  // Déploiement Cloudflare : le site est le contenu du dossier public/.
+  "name": "tenues-jeu-lnr",
+  "compatibility_date": "2025-01-01",
+  "assets": { "directory": "./public" }
+}
