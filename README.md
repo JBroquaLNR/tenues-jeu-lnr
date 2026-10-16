@@ -1,9 +1,15 @@
-# Tenues de jeu LNR · V0.2.0
+# Tenues de jeu LNR · V0.3.0
 
 Site de dépôt, de validation et de compatibilité des tenues de jeu (TOP 14 et PRO D2).
 Cette version contient **l'admin** (suivi, validation, paires à trancher, matrices, catalogue, visuels)
 et **l'espace club** : un lien secret par club, pour déposer ses tenues et suivre leur état.
+La V0.3.0 ajoute l'**export** PDF ou PowerPoint des matrices (onglet Export) et l'affichage en **orange**
+des paires encore à trancher.
 Les options par déplacement, publiées depuis l'admin, arrivent dans la version suivante.
+
+## Passer de la V0.2.0 à la V0.3.0
+
+Décompressez le zip à la racine du dépôt et envoyez sur GitHub. Rien à faire dans Supabase.
 
 ## Passer de la V0.1.0 à la V0.2.0
 
@@ -27,7 +33,7 @@ Seul le dossier `public/` est mis en ligne. Le reste sert à l'installation et r
 | `public/config.js` | Les deux réglages Supabase à renseigner |
 | `public/data.json`, `public/img/` | Catalogue 2026-2027 : clubs, tenues, calendrier, verdicts du document |
 | `public/gabarits/` | Gabarits recolorés pour les visuels |
-| `public/lib/` | Bibliothèques (lecture PDF, client Supabase) |
+| `public/lib/` | Bibliothèques : lecture PDF, client Supabase, création de PDF et de PowerPoint |
 | `public/_headers`, `public/robots.txt` | Demandent aux moteurs de recherche de ne pas indexer le site |
 | `supabase/schema.sql` | Script complet de la base, pour une installation neuve (non publié) |
 | `supabase/V0.2.0-espace-club.sql` | Ajout de l'espace club à une base V0.1.0 |
@@ -95,3 +101,16 @@ Chaque envoi sur GitHub redéploie le site.
 Les zips sont livrés sans `public/config.js`, pour ne pas écraser vos réglages.
 `supabase/schema.sql` est remplacé à chaque version : l'adresse du compte LNR y revient à sa valeur d'exemple,
 sans conséquence tant que vous ne relancez pas ce script.
+
+## Couleurs des matrices
+
+- **Vert / rouge** : verdict du document 2026-2027, du calcul (paire absente du document), ou décision prise dans l'admin.
+- **Orange** : paire à trancher (le document hésite, se contredit, ou s'écarte nettement du calcul ; ou nouvelle tenue
+  proche du seuil). Le symbole indique l'avis du document, ou du calcul à défaut. Une décision fait passer la case
+  au vert ou au rouge, dans les deux sens du déplacement.
+
+## Export
+
+Onglet Export : choix des clubs (visiteurs) et des journées, page de couverture facultative, 8 déplacements par page,
+soit une ou deux pages par club pour une saison entière. Les cases orange sortent en orange avec un « ? ».
+Le PowerPoint est modifiable ; une saison complète de PRO D2 pèse environ 8 Mo.

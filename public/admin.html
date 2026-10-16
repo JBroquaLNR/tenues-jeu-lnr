@@ -306,13 +306,14 @@ dialog::backdrop{background:rgba(8,12,18,.55)}
     <button class="tab" role="tab" data-view="a-trancher" id="tab-a-trancher">À trancher<span class="n" id="n-trancher" hidden></span></button>
     <button class="tab" role="tab" data-view="tenues" id="tab-tenues">Tenues</button>
     <button class="tab" role="tab" data-view="visuels" id="tab-visuels">Visuels</button>
+    <button class="tab" role="tab" data-view="export" id="tab-export">Export</button>
     <span class="sync" id="sync">Chargement…</span>
   </div>
 </nav>
 
 <main class="wrap" id="main"><p class="vide-etat">Chargement des tenues de la saison…</p></main>
 
-<footer class="wrap pied">Tenues de jeu LNR · V0.2.0</footer>
+<footer class="wrap pied">Tenues de jeu LNR · V0.3.0</footer>
 <dialog id="fiche" aria-labelledby="fiche-titre"></dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 
@@ -401,20 +402,22 @@ function proximite(a,b){
   }
   return s;
 }
-function niveauCalcul(s){const A=D.algo; return s>A.seuil+A.bande?"ko":s<A.seuil-A.bande?"ok":"doute";}
+function niveauCalcul(s){ return s>D.algo.seuil?"ko":"ok"; }
+const net=s=>Math.abs(s-D.algo.seuil)>=D.algo.bande;
 const cle=(a,b)=>a<b?a+"~"+b:b+"~"+a;
 function verdict(ida,idb){
   const k=cle(ida,idb), a=kits[ida], b=kits[idb], s=proximite(a,b), calc=niveauCalcul(s);
   const ref=D.reference[k], dec=decisions[k];
-  const refV=!ref?null:ref==="conflit"?"doute":ref.slice(0,2);
+  const refV=!ref||ref==="conflit"?null:ref.slice(0,2);
   const raisons=[];
   if(ref==="conflit") raisons.push("conflit");
   if(ref==="ok?"||ref==="ko?") raisons.push("incertain");
-  if(refV&&refV!=="doute"&&calc!=="doute"&&calc!==refV) raisons.push("ecart");
-  if(!ref&&calc==="doute") raisons.push("nouvelle");
+  if(refV&&calc!==refV&&net(s)) raisons.push("ecart");
+  if(!ref&&!net(s)) raisons.push("nouvelle");
   let v,src;
-  if(dec){v=dec.v;src="decision";} else if(refV){v=refV;src="document";} else {v=calc;src="calcul";}
-  return {k,v,src,s,calc,ref,refV,raisons,dec,aTrancher:!dec&&raisons.length>0,incertain:!dec&&(ref==="ok?"||ref==="ko?")};
+  if(dec&&(dec.v==="ok"||dec.v==="ko")){v=dec.v;src="decision";} else if(raisons.length){v="doute";src="doute";} else if(refV){v=refV;src="document";} else {v=calc;src="calcul";}
+  const avis=refV||(ref==="conflit"?null:calc);
+  return {k,v,src,s,calc,ref,refV,raisons,avis,dec:src==="decision"?dec:null,aTrancher:src==="doute"};
 }
 function toutesPaires(){
   const ids=Object.keys(kits).filter(i=>clubs[kits[i].club].comp===etat.comp), out=[];
@@ -451,23 +454,24 @@ function thumbT(T){
 }
 function cellule(row,col){
   const v=verdict(row.id,col.id);
-  const cls=["cell",v.v,v.incertain?"incertain":"",v.src==="decision"?"tranche":""].join(" ");
-  const l=`${clubs[row.club].court} ${row.type} contre ${clubs[col.club].court} ${col.type} : ${LIB[v.v]}`;
-  return `<td><button class="${cls}" data-a="${row.id}" data-b="${col.id}" aria-label="${esc(l)}" title="${esc(l)}">${SYM[v.v]}${v.incertain?"?":""}</button></td>`;
+  const cls=["cell",v.v,v.src==="decision"?"tranche":""].join(" ");
+  const l=`${clubs[row.club].court} ${row.type} contre ${clubs[col.club].court} ${col.type} : ${v.v==="doute"?"à trancher"+(v.avis?", avis "+LIB[v.avis].toLowerCase():""):LIB[v.v]}`;
+  return `<td><button class="${cls}" data-a="${row.id}" data-b="${col.id}" aria-label="${esc(l)}" title="${esc(l)}">${v.v==="doute"?(v.avis?SYM[v.avis]:"")+"?":SYM[v.v]}</button></td>`;
 }
 function matrice(V,R){
   return `<div class="mx-box"><table class="mx"><thead><tr><th class="coin">${esc(R.court)} →<br>${esc(V.court)} ↓</th>${R.tenues.map(k=>`<th scope="col"><span class="kh">${thumb(k)}<span class="kitcap">${esc(k.type)}</span></span></th>`).join("")}</tr></thead>
   <tbody>${V.tenues.map(r=>`<tr><th scope="row"><span class="kh"><span class="kitcap" title="${esc(r.type)}">${esc(abr(r.type))}</span>${thumb(r)}</span></th>${R.tenues.map(c=>cellule(r,c)).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 function conseil(V,R){
-  const dom=R.tenues[0], okk=V.tenues.filter(t=>verdict(t.id,dom.id).v==="ok").map(t=>t.type);
-  return okk.length?`<p class="conseil">Si ${esc(R.court)} joue en ${esc(dom.type)} : <b>${okk.map(esc).join(", ")}</b></p>`
-    :`<p class="conseil vide">Si ${esc(R.court)} joue en ${esc(dom.type)} : <b>aucune tenue compatible</b></p>`;
+  const dom=R.tenues[0], okk=V.tenues.filter(t=>verdict(t.id,dom.id).v==="ok").map(t=>t.type), dt=V.tenues.filter(t=>verdict(t.id,dom.id).v==="doute").map(t=>t.type);
+  const reste=dt.length?` <span>(à trancher : ${dt.map(esc).join(", ")})</span>`:"";
+  return okk.length?`<p class="conseil">Si ${esc(R.court)} joue en ${esc(dom.type)} : <b>${okk.map(esc).join(", ")}</b>${reste}</p>`
+    :`<p class="conseil ${dt.length?"":"vide"}">Si ${esc(R.court)} joue en ${esc(dom.type)} : <b>${dt.length?"rien de sûr":"aucune tenue compatible"}</b>${reste}</p>`;
 }
 function carteMatch(m,titre){const R=clubs[m.dom],V=clubs[m.ext]; return `<article class="match"><header><span class="j">J${m.j}</span><h3>${titre}</h3></header>${matrice(V,R)}${conseil(V,R)}</article>`;}
 const legende=`<div class="legende">
   <span><span class="cell ok">✓</span>Compatible</span><span><span class="cell ko">✕</span>À éviter</span>
-  <span><span class="cell doute">?</span>À vérifier</span><span><span class="cell ok incertain">✓?</span>Marqué incertain dans le document</span>
+  <span><span class="cell doute">✓?</span>À trancher (le symbole rappelle l'avis du document, ou du calcul)</span>
   <span><span class="cell ok tranche">✓</span>Tranché sur la plateforme</span><span>Cliquer une case ouvre la fiche de la paire.</span></div>`;
 function chips(pal,max){return pal.slice(0,max||4).map(q=>`<span class="chip" title="${Math.round(q.w*100)} % de la surface"><i style="background:${q.hex}"></i><code>${q.hex.toUpperCase()}<br>${Math.round(q.w*100)} %</code></span>`).join("");}
 
@@ -652,18 +656,18 @@ function vueRencontres(){
   }
   return h+legende;
 }
-const RAISON={conflit:"Le document se contredit selon le sens du déplacement",incertain:"Marqué incertain dans le document",ecart:"Écart entre le document et le calcul",nouvelle:"Nouvelle tenue, calcul indécis"};
+const RAISON={conflit:"Le document se contredit selon le sens du déplacement",incertain:"Marqué incertain dans le document",ecart:"Écart net entre le document et le calcul",nouvelle:"Nouvelle tenue, proche du seuil"};
 function ligneKit(k){const c=clubs[k.club]; return `<span class="k">${thumb(k)}<span><b>${esc(c.court)}</b><span>${esc(k.type)} · ${esc(k.couleur)}</span></span></span>`;}
 function vueTrancher(){
   const tout=toutesPaires().filter(p=>p.aTrancher);
   const n={tous:tout.length,conflit:0,incertain:0,ecart:0,nouvelle:0}; tout.forEach(p=>p.raisons.forEach(r=>n[r]++));
   const liste=tout.filter(p=>etat.filtre==="tous"||p.raisons.includes(etat.filtre)).sort((x,y)=>x.raisons[0].localeCompare(y.raisons[0])||x.k.localeCompare(y.k));
   const f=(id,l)=>`<button class="pick" data-filtre="${id}" aria-pressed="${etat.filtre===id}">${l} · ${n[id]}</button>`;
-  let h=`<div class="view-head"><div><h2>À trancher</h2><p>Paires de maillots pour lesquelles le document 2026-2027 hésite, se contredit ou s'écarte du calcul. Une décision vaut pour les deux sens du déplacement.</p></div></div>
+  let h=`<div class="view-head"><div><h2>À trancher</h2><p>Ces paires sont en orange dans les matrices tant que vous ne les avez pas tranchées : le document 2026-2027 hésite, se contredit ou s'écarte nettement du calcul. Une décision vaut pour les deux sens du déplacement et fait passer la case au vert ou au rouge.</p></div></div>
   <div class="filtres" role="group" aria-label="Motif">${f("tous","Toutes")}${f("conflit","Contradictions")}${f("incertain","Incertaines")}${f("ecart","Écarts avec le calcul")}${n.nouvelle?f("nouvelle","Nouvelles tenues"):""}</div>`;
   if(!liste.length) return h+`<p class="vide-etat">Rien à trancher dans cette catégorie.</p>`;
   return h+`<div class="liste">${liste.map(p=>{const [a,b]=p.k.split("~");return `<div class="ligne"><div><div class="duo">${ligneKit(kits[a])}<span class="vs">/</span>${ligneKit(kits[b])}</div>
-    <div class="raisons">${p.raisons.map(r=>`<span class="pill ${r}">${RAISON[r]}</span>`).join("")}${p.ref?`<span class="pill">Document : ${p.ref==="conflit"?"✓ et ✕":SYM[p.refV]+(p.ref.endsWith("?")?"?":"")}</span>`:""}<span class="pill">Calcul : ${LIB[p.calc].toLowerCase()}</span></div></div>
+    <div class="raisons"><span class="pill doute">À trancher</span>${p.raisons.map(r=>`<span class="pill ${r}">${RAISON[r]}</span>`).join("")}${p.ref?`<span class="pill">Document : ${p.ref==="conflit"?"✓ et ✕":SYM[p.refV]+(p.ref.endsWith("?")?"?":"")}</span>`:""}<span class="pill">Calcul : ${LIB[p.calc].toLowerCase()}</span></div></div>
     <div class="actions">${lecture?"":`<button class="btn ok" data-decide="ok" data-k="${p.k}">Compatible</button><button class="btn ko" data-decide="ko" data-k="${p.k}">À éviter</button>`}<button class="btn" data-a="${a}" data-b="${b}">Voir</button></div></div>`}).join("")}</div>`;
 }
 function vueTenues(){
@@ -694,6 +698,173 @@ function vueVisuels(){
     <p class="note">Les aplats et les motifs géométriques sortent bien. Un graphisme propre à un club (imprimé, dégradé, motif en filigrane) ne peut pas être reconstruit à partir d'un gabarit : pour ces tenues, le visuel du catalogue sera recadré depuis le BAT.</p></div></div>`;
 }
 
+/* ---------- Export PDF : une ou deux pages par club ---------- */
+const EXP={}, PAR_PAGE=8;
+function selExport(){
+  const comp=etat.comp; if(!EXP[comp]){ const cs=Object.values(clubs).filter(c=>c.comp===comp).map(c=>c.id), js=[...new Set(D.matchs.filter(m=>m.comp===comp).map(m=>m.j))].sort((a,b)=>a-b);
+    EXP[comp]={clubs:new Set(cs),js:new Set(js),tousJ:js,couverture:true,conseil:true}; }
+  return EXP[comp];
+}
+function deplacements(id,sel){ return D.matchs.filter(m=>m.comp===etat.comp&&m.ext===id&&sel.js.has(m.j)).sort((a,b)=>a.j-b.j); }
+function plages(js){ const t=[...js].sort((a,b)=>a-b), out=[]; for(let i=0;i<t.length;){ let j=i; while(j+1<t.length&&t[j+1]===t[j]+1) j++; out.push(i===j?"J"+t[i]:`J${t[i]} à J${t[j]}`); i=j+1; } return out.join(", "); }
+function vueExport(){
+  const sel=selExport(), cs=Object.values(clubs).filter(c=>c.comp===etat.comp), moitie=Math.ceil(sel.tousJ.length/2);
+  let n=0, pages=sel.couverture?1:0; for(const c of cs) if(sel.clubs.has(c.id)){ const d=deplacements(c.id,sel).length; n+=d; pages+=Math.ceil(d/PAR_PAGE); }
+  return `<div class="view-head"><div><h2>Export</h2><p>Un document au format présentation : pour chaque club choisi, les matrices de ses déplacements sur les journées choisies, ${PAR_PAGE} rencontres par page. Les verdicts sont ceux des matrices ; une case encore à trancher sort en orange.</p></div></div>
+  <div class="carte" style="margin-bottom:16px"><h3>Clubs <span class="rang"><button class="btn petit" data-exp-clubs="tous">Tous</button><button class="btn petit" data-exp-clubs="aucun">Aucun</button></span></h3>
+    <div class="picker" style="margin:0">${cs.map(c=>`<button class="pick" data-exp-club="${c.id}" aria-pressed="${sel.clubs.has(c.id)}"><img src="${c.logo}" alt="">${esc(c.court)}</button>`).join("")}</div></div>
+  <div class="carte" style="margin-bottom:16px"><h3>Journées <span class="rang"><button class="btn petit" data-exp-j="toutes">Toutes</button><button class="btn petit" data-exp-j="aller">Aller (J1 à J${moitie})</button><button class="btn petit" data-exp-j="retour">Retour (J${moitie+1} à J${sel.tousJ[sel.tousJ.length-1]})</button><button class="btn petit" data-exp-j="aucune">Aucune</button></span></h3>
+    <div class="picker" style="margin:0">${sel.tousJ.map(j=>`<button class="pick j" data-exp-jour="${j}" aria-pressed="${sel.js.has(j)}">J${j}</button>`).join("")}</div></div>
+  <div class="carte"><h3>Document</h3>
+    <label class="champ" for="x-couv" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="x-couv" ${sel.couverture?"checked":""}> Page de couverture avec la sélection et la légende</label>
+    <label class="champ" for="x-cons" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="x-cons" ${sel.conseil?"checked":""}> Ligne « Si le club recevant joue en Domicile » sous chaque rencontre</label>
+    <div class="envoi" style="border:0;padding:0;background:none"><span id="x-resume">${sel.clubs.size} club${sel.clubs.size>1?"s":""} · ${sel.js.size?plages(sel.js):"aucune journée"} · ${n} déplacement${n>1?"s":""} · ${pages} page${pages>1?"s":""}</span>
+      <span class="rang"><button class="btn" id="b-pdf" ${n?"":"disabled"}>PDF</button><button class="btn plein" id="b-ppt" ${n?"":"disabled"}>Générer le PowerPoint</button></span></div></div>`;
+}
+let jspdfP=null;
+function chargerJspdf(){ if(!jspdfP) jspdfP=new Promise((ok,ko)=>{ const s=document.createElement("script"); s.src="lib/jspdf.umd.min.js"; s.onload=()=>window.jspdf?ok(window.jspdf):ko(new Error("jspdf")); s.onerror=ko; document.head.appendChild(s); }); return jspdfP; }
+const imgPdf={};
+async function imagePdf(src){
+  if(imgPdf[src]) return imgPdf[src];
+  return imgPdf[src]=(async()=>{ try{ const im=await image(src), sc=Math.min(1,240/Math.max(im.naturalWidth,im.naturalHeight)), cv=document.createElement("canvas");
+    cv.width=Math.max(1,Math.round(im.naturalWidth*sc)); cv.height=Math.max(1,Math.round(im.naturalHeight*sc)); const c=cv.getContext("2d"); c.fillStyle="#fff"; c.fillRect(0,0,cv.width,cv.height); c.drawImage(im,0,0,cv.width,cv.height);
+    return {data:cv.toDataURL("image/jpeg",.88),w:cv.width,h:cv.height}; }catch(e){ return null; } })();
+}
+async function genererPdf(){
+  const sel=selExport(), b=$("#b-pdf"), info=$("#x-resume"); b.disabled=true; const txt0=info.textContent;
+  try{
+    info.textContent="Préparation des visuels…";
+    const {jsPDF}=await chargerJspdf(); await chargerGabarits().catch(()=>{}); reconstruire();
+    const cs=Object.values(clubs).filter(c=>c.comp===etat.comp&&sel.clubs.has(c.id)), srcs=new Set();
+    for(const c of Object.values(clubs).filter(c=>c.comp===etat.comp)){ srcs.add(c.logo); c.tenues.forEach(k=>srcs.add(k.maillot.img)); }
+    const I={}; for(const s of srcs) I[s]=await imagePdf(s);
+    const W=960, H=540, M=28, doc=new jsPDF({orientation:"landscape",unit:"pt",format:[W,H],compress:true});
+    const C={ink:[18,24,33],muted:[90,101,115],line:[211,217,224],accent:[28,61,184],ok:[18,110,68],okb:[220,240,229],ko:[173,36,28],kob:[248,220,217],doute:[138,88,0],douteb:[251,234,198],fond:[245,247,249]};
+    const col=(k,f)=>(f?doc.setFillColor:doc.setDrawColor).apply(doc,C[k]), tc=k=>doc.setTextColor.apply(doc,C[k]);
+    const police=(t,g)=>{ doc.setFont("helvetica",g?"bold":"normal"); doc.setFontSize(t); };
+    const titre=`${etat.comp} ${D.saison}`, today=new Date().toLocaleDateString("fr-FR");
+    const imgBox=(src,x,y,w,h)=>{ const i=I[src]; if(!i) return; const r=Math.min(w/i.w,h/i.h), iw=i.w*r, ih=i.h*r; doc.addImage(i.data,"JPEG",x+(w-iw)/2,y+(h-ih)/2,iw,ih,undefined,"FAST"); };
+    const coupe=(t,max,lig)=>{ const l=doc.splitTextToSize(String(t||""),max); return l.slice(0,lig||1).map((x,i)=>i===(lig||1)-1&&l.length>(lig||1)?x.replace(/.{0,2}$/,"…"):x); };
+    const marque=(v,x,y,s)=>{ doc.setLineWidth(Math.max(1.4,s*.09)); col(v); if(v==="doute"){ police(Math.max(8,s*1.05),true); tc("doute"); doc.text("?",x,y+s*.36,{align:"center"}); return; } if(v==="ok"){ doc.line(x-s*.28,y,x-s*.08,y+s*.2); doc.line(x-s*.08,y+s*.2,x+s*.3,y-s*.22); } else { doc.line(x-s*.22,y-s*.22,x+s*.22,y+s*.22); doc.line(x-s*.22,y+s*.22,x+s*.22,y-s*.22); } };
+    const legende=(x,y)=>{ for(const [v,l] of [["ok","Compatible"],["ko","À éviter"],["doute","À trancher"]]){ col(v+"b",true); doc.roundedRect(x,y-9,14,12,2,2,"F"); marque(v,x+7,y-3,12); police(8.5); tc("ink"); doc.text(l,x+19,y); x+=19+doc.getTextWidth(l)+18; } return x; };
+    let page=0; const nouvellePage=()=>{ if(page++) doc.addPage([W,H],"landscape"); };
+    const pied=(gauche)=>{ col("line"); doc.setLineWidth(.6); doc.line(M,H-30,W-M,H-30); const x=legende(M,H-14); police(8); tc("muted"); doc.text(gauche,x+6,H-14); doc.text(`LNR · Tenues de jeu · ${titre} · ${today} · page ${page}`,W-M,H-14,{align:"right"}); };
+    if(sel.couverture){
+      nouvellePage(); col("fond",true); doc.rect(0,0,W,H,"F");
+      police(14,true); tc("accent"); doc.text("LIGUE NATIONALE DE RUGBY",M+12,110);
+      police(46,true); tc("ink"); doc.text(titre,M+12,165); police(30,false); doc.text("Choix des tenues en déplacement",M+12,205);
+      police(11); tc("muted");
+      const lignes=[`Clubs : ${cs.length===Object.values(clubs).filter(c=>c.comp===etat.comp).length?"tous":cs.map(c=>c.court).join(", ")}`,`Journées : ${plages(sel.js)}`,"Pour chaque déplacement : en haut, les maillots du club recevant ; à gauche, ceux du club visiteur.","Une case verte indique deux maillots compatibles, une case rouge deux maillots à éviter, une case orange une paire que la LNR n'a pas encore tranchée."];
+      let y=260; for(const l of lignes){ for(const x of doc.splitTextToSize(l,W-2*M-24)){ doc.text(x,M+12,y); y+=17; } y+=4; }
+      legende(M+12,y+18); police(9); tc("muted"); doc.text(`Document généré le ${today} depuis la plateforme Tenues de jeu.`,M+12,H-36);
+    }
+    let fait=0; const total=cs.length;
+    for(const V of cs){
+      const ds=deplacements(V.id,sel); fait++; info.textContent=`Mise en page : ${V.court} (${fait}/${total})…`; await new Promise(r=>setTimeout(r,0));
+      if(!ds.length) continue;
+      const tousDep=D.matchs.filter(m=>m.comp===etat.comp&&m.ext===V.id).length;
+      for(let p=0;p<ds.length;p+=PAR_PAGE){
+        nouvellePage(); const lot=ds.slice(p,p+PAR_PAGE);
+        imgBox(V.logo,M,22,40,40); police(24,true); tc("ink"); doc.text(V.nom,M+50,46); police(9.5); tc("muted");
+        doc.text(`Choix des tenues en déplacement · ${titre}`,M+51,60);
+        doc.text(`${lot.length} déplacement${lot.length>1?"s":""} sur ${tousDep}${ds.length>PAR_PAGE?` · page ${p/PAR_PAGE+1} sur ${Math.ceil(ds.length/PAR_PAGE)} pour ce club`:""}`,W-M,46,{align:"right"});
+        doc.text("En haut : maillots du club recevant. À gauche : vos maillots.",W-M,60,{align:"right"});
+        const gx=12, gy=12, cw=(W-2*M-3*gx)/4, ch=(H-78-36-gy)/2;
+        lot.forEach((m,i)=>{
+          const R=clubs[m.dom], x=M+(i%4)*(cw+gx), y=78+Math.floor(i/4)*(ch+gy), pad=9;
+          col("line"); doc.setLineWidth(.7); doc.roundedRect(x,y,cw,ch,5,5,"S");
+          police(13,true); tc("accent"); doc.text("J"+m.j,x+pad,y+19); const wj=doc.getTextWidth("J"+m.j);
+          police(11,true); tc("ink"); doc.text(coupe("Chez "+R.court,cw-2*pad-wj-8)[0],x+pad+wj+7,y+19);
+          const nc=R.tenues.length, nr=V.tenues.length, rh=64, top=y+28, labH=16;
+          const cell=Math.min(40,(cw-2*pad-rh-(nc-1)*3)/nc), cellH=Math.min(30,(ch-(top-y)-30-labH-6-(sel.conseil?18:4)-(nr-1)*3)/nr);
+          const x0=x+pad+rh, th=Math.min(30,cell-4);
+          R.tenues.forEach((k,c)=>{ const cx=x0+c*(cell+3); imgBox(k.maillot.img,cx+(cell-th)/2,top,th,th); police(6.2); tc("muted"); coupe(k.couleur||k.type,cell+2,2).forEach((l,n)=>doc.text(l,cx+cell/2,top+th+7+n*7,{align:"center"})); });
+          const y0=top+th+labH+4;
+          V.tenues.forEach((r,ri)=>{ const ry=y0+ri*(cellH+3), tw=Math.min(24,cellH-2);
+            imgBox(r.maillot.img,x+pad+rh-tw-3,ry+(cellH-tw)/2,tw,tw); police(6.2); tc("muted"); coupe(r.couleur||r.type,rh-tw-6,3).forEach((l,n,a)=>doc.text(l,x+pad,ry+cellH/2-(a.length-1)*3.5+2+n*7));
+            R.tenues.forEach((k,c)=>{ const v=verdict(r.id,k.id).v, cx=x0+c*(cell+3); col(v+"b",true); doc.roundedRect(cx,ry,cell,cellH,2.5,2.5,"F"); marque(v,cx+cell/2,ry+cellH/2,Math.min(cell,cellH)*.62); }); });
+          if(sel.conseil){ const dom=R.tenues[0], okk=V.tenues.filter(t=>verdict(t.id,dom.id).v==="ok").map(t=>abr(t.type)), dt=V.tenues.filter(t=>verdict(t.id,dom.id).v==="doute").map(t=>abr(t.type));
+            police(7); tc(okk.length||dt.length?"muted":"ko"); coupe(`Si ${R.court} joue en ${dom.type} : ${okk.length?okk.join(", "):dt.length?"rien de sûr":"aucune tenue compatible"}${dt.length?" (à trancher : "+dt.join(", ")+")":""}`,cw-2*pad,2).forEach((l,n)=>doc.text(l,x+pad,y+ch-14+n*8)); }
+        });
+        pied(`Visiteur : ${V.court}`);
+      }
+    }
+    const nom=`${etat.comp.replace(/\s+/g,"")}_Choix_des_tenues_${D.saison}${sel.js.size<sel.tousJ.length?"_"+plages(sel.js).replace(/[^0-9a-zA-Z]+/g,"-"):""}.pdf`;
+    doc.save(nom); info.textContent=`PDF enregistré : ${nom} (${page} page${page>1?"s":""}).`;
+  }catch(e){ info.textContent=txt0; toast("Le PDF n'a pas pu être généré. Rechargez la page et réessayez."); console.error(e); }
+  finally{ b.disabled=false; }
+}
+
+/* ---------- Export PowerPoint : même mise en page que le PDF, en diapositives modifiables ---------- */
+let pptP=null;
+function chargerPpt(){ if(!pptP) pptP=new Promise((ok,ko)=>{ const s=document.createElement("script"); s.src="lib/pptxgen.bundle.js"; s.onload=()=>window.PptxGenJS?ok(window.PptxGenJS):ko(new Error("pptxgenjs")); s.onerror=ko; document.head.appendChild(s); }); return pptP; }
+async function genererPpt(){
+  const sel=selExport(), b=$("#b-ppt"), b2=$("#b-pdf"), info=$("#x-resume"); b.disabled=true; if(b2) b2.disabled=true; const txt0=info.textContent;
+  try{
+    info.textContent="Préparation des visuels…";
+    const PptxGenJS=await chargerPpt(); await chargerGabarits().catch(()=>{}); reconstruire();
+    const cs=Object.values(clubs).filter(c=>c.comp===etat.comp&&sel.clubs.has(c.id)), srcs=new Set();
+    for(const c of Object.values(clubs).filter(c=>c.comp===etat.comp)){ srcs.add(c.logo); c.tenues.forEach(k=>srcs.add(k.maillot.img)); }
+    const I={}; for(const s of srcs) I[s]=await imagePdf(s);
+    const P=new PptxGenJS(); P.layout="LAYOUT_WIDE"; P.author="LNR"; P.company="Ligue Nationale de Rugby";
+    const titre=`${etat.comp} ${D.saison}`, today=new Date().toLocaleDateString("fr-FR"); P.title=`${titre} · Choix des tenues en déplacement`;
+    const W=960, H=540, M=28, i=v=>v/72;
+    const C={ink:"121821",muted:"5A6573",line:"D3D9E0",accent:"1C3DB8",ok:"126E44",okb:"DCF0E5",ko:"AD241C",kob:"F8DCD9",doute:"8A5800",douteb:"FBEAC6",fond:"F5F7F9",blanc:"FFFFFF"};
+    const F="Arial", SYMF="Segoe UI Symbol", MARQ={ok:"✓",ko:"✕",doute:"?"};
+    const coupe=(t,largeur,taille,lig)=>{ t=String(t||""); const max=Math.max(4,Math.floor(largeur/(taille*.52))), out=[]; let reste=t;
+      while(reste&&out.length<(lig||1)){ if(reste.length<=max){ out.push(reste); reste=""; break; } let k=reste.lastIndexOf(" ",max); if(k<max*.5) k=max; out.push(reste.slice(0,k).trim()); reste=reste.slice(k).trim(); }
+      if(reste&&out.length) out[out.length-1]=out[out.length-1].slice(0,Math.max(1,max-1))+"…"; return out.join("\n"); };
+    const texte=(sl,t,x,y,w,h,o)=>sl.addText(t,Object.assign({x:i(x),y:i(y),w:i(w),h:i(h),fontFace:F,fontSize:9,color:C.ink,margin:0,valign:"middle"},o||{}));
+    const imgBox=(sl,src,x,y,w,h)=>{ const im=I[src]; if(!im) return; const r=Math.min(w/im.w,h/im.h), iw=im.w*r, ih=im.h*r; sl.addImage({data:im.data.replace(/^data:/,""),x:i(x+(w-iw)/2),y:i(y+(h-ih)/2),w:i(iw),h:i(ih)}); };
+    const caseV=(sl,v,x,y,w,h,taille)=>sl.addText(MARQ[v],{shape:P.ShapeType.roundRect,rectRadius:.04,x:i(x),y:i(y),w:i(w),h:i(h),fill:{color:C[v+"b"]},line:{color:C[v+"b"],width:0},color:C[v],bold:true,fontFace:SYMF,fontSize:taille,align:"center",valign:"middle",margin:0});
+    const legende=(sl,x,y)=>{ for(const [v,l] of [["ok","Compatible"],["ko","À éviter"],["doute","À trancher"]]){ caseV(sl,v,x,y-10,14,12,8); texte(sl,l,x+19,y-11,70,14,{fontSize:8.5}); x+=19+l.length*4.6+18; } return x; };
+    let n=0; const pied=(sl,gauche)=>{ n++; sl.addShape(P.ShapeType.line,{x:i(M),y:i(H-30),w:i(W-2*M),h:0,line:{color:C.line,width:.6}}); const x=legende(sl,M,H-14);
+      texte(sl,gauche,x+6,H-25,200,14,{fontSize:8,color:C.muted}); texte(sl,`LNR · Tenues de jeu · ${titre} · ${today} · ${n}`,W-M-420,H-25,420,14,{fontSize:8,color:C.muted,align:"right"}); };
+    if(sel.couverture){
+      const sl=P.addSlide(); sl.background={color:C.fond}; n++;
+      texte(sl,"LIGUE NATIONALE DE RUGBY",M+12,94,600,20,{fontSize:14,bold:true,color:C.accent});
+      texte(sl,titre,M+12,124,880,52,{fontSize:46,bold:true}); texte(sl,"Choix des tenues en déplacement",M+12,180,880,36,{fontSize:30});
+      const tous=cs.length===Object.values(clubs).filter(c=>c.comp===etat.comp).length;
+      const lignes=[`Clubs : ${tous?"tous":cs.map(c=>c.court).join(", ")}`,`Journées : ${plages(sel.js)}`,"Pour chaque déplacement : en haut, les maillots du club recevant ; à gauche, ceux du club visiteur.","Une case verte indique deux maillots compatibles, une case rouge deux maillots à éviter, une case orange une paire que la LNR n'a pas encore tranchée."];
+      sl.addText(lignes.map(t=>({text:t,options:{breakLine:true,paraSpaceAfter:6}})),{x:i(M+12),y:i(244),w:i(W-2*M-24),h:i(110),fontFace:F,fontSize:11,color:C.muted,margin:0,valign:"top"});
+      legende(sl,M+12,384); texte(sl,`Document généré le ${today} depuis la plateforme Tenues de jeu.`,M+12,H-50,600,16,{fontSize:9,color:C.muted});
+    }
+    let fait=0;
+    for(const V of cs){
+      const ds=deplacements(V.id,sel); fait++; info.textContent=`Mise en page : ${V.court} (${fait}/${cs.length})…`; await new Promise(r=>setTimeout(r,0));
+      if(!ds.length) continue;
+      const tousDep=D.matchs.filter(m=>m.comp===etat.comp&&m.ext===V.id).length;
+      for(let p=0;p<ds.length;p+=PAR_PAGE){
+        const sl=P.addSlide(); sl.background={color:C.blanc}; const lot=ds.slice(p,p+PAR_PAGE);
+        imgBox(sl,V.logo,M,22,40,40); texte(sl,V.nom,M+50,24,520,28,{fontSize:24,bold:true}); texte(sl,`Choix des tenues en déplacement · ${titre}`,M+51,52,520,14,{fontSize:9.5,color:C.muted});
+        texte(sl,`${lot.length} déplacement${lot.length>1?"s":""} sur ${tousDep}${ds.length>PAR_PAGE?` · ${p/PAR_PAGE+1}/${Math.ceil(ds.length/PAR_PAGE)} pour ce club`:""}`,W-M-420,36,420,14,{fontSize:9.5,color:C.muted,align:"right"});
+        texte(sl,"En haut : maillots du club recevant. À gauche : vos maillots.",W-M-420,52,420,14,{fontSize:9.5,color:C.muted,align:"right"});
+        const gx=12, gy=12, cw=(W-2*M-3*gx)/4, ch=(H-78-36-gy)/2;
+        lot.forEach((m,k)=>{
+          const R=clubs[m.dom], x=M+(k%4)*(cw+gx), y=78+Math.floor(k/4)*(ch+gy), pad=9;
+          sl.addShape(P.ShapeType.roundRect,{x:i(x),y:i(y),w:i(cw),h:i(ch),rectRadius:.06,fill:{color:C.blanc},line:{color:C.line,width:.7}});
+          sl.addText([{text:"J"+m.j+"  ",options:{color:C.accent,bold:true,fontSize:13}},{text:coupe("Chez "+R.court,cw-2*pad-40,11),options:{color:C.ink,bold:true,fontSize:11}}],{x:i(x+pad),y:i(y+7),w:i(cw-2*pad),h:i(18),fontFace:F,margin:0,valign:"middle"});
+          const nc=R.tenues.length, nr=V.tenues.length, rh=64, top=y+28, labH=16;
+          const cell=Math.min(40,(cw-2*pad-rh-(nc-1)*3)/nc), cellH=Math.min(30,(ch-(top-y)-30-labH-6-(sel.conseil?18:4)-(nr-1)*3)/nr);
+          const x0=x+pad+rh, th=Math.min(30,cell-4);
+          R.tenues.forEach((t,c)=>{ const cx=x0+c*(cell+3); imgBox(sl,t.maillot.img,cx+(cell-th)/2,top,th,th); texte(sl,coupe(t.couleur||t.type,cell+2,6.2,2),cx-3,top+th+1,cell+6,16,{fontSize:6.2,color:C.muted,align:"center",valign:"top"}); });
+          const y0=top+th+labH+4;
+          V.tenues.forEach((r,ri)=>{ const ry=y0+ri*(cellH+3), tw=Math.min(24,cellH-2);
+            imgBox(sl,r.maillot.img,x+pad+rh-tw-3,ry+(cellH-tw)/2,tw,tw); texte(sl,coupe(r.couleur||r.type,rh-tw-6,6.2,3),x+pad,ry,rh-tw-6,cellH,{fontSize:6.2,color:C.muted});
+            R.tenues.forEach((t,c)=>{ const v=verdict(r.id,t.id).v; caseV(sl,v,x0+c*(cell+3),ry,cell,cellH,Math.max(9,Math.min(cell,cellH)*.5)); }); });
+          if(sel.conseil){ const dom=R.tenues[0], okk=V.tenues.filter(t=>verdict(t.id,dom.id).v==="ok").map(t=>abr(t.type)), dt=V.tenues.filter(t=>verdict(t.id,dom.id).v==="doute").map(t=>abr(t.type));
+            texte(sl,coupe(`Si ${R.court} joue en ${dom.type} : ${okk.length?okk.join(", "):dt.length?"rien de sûr":"aucune tenue compatible"}${dt.length?" (à trancher : "+dt.join(", ")+")":""}`,cw-2*pad,7,2),x+pad,y+ch-20,cw-2*pad,16,{fontSize:7,color:okk.length||dt.length?C.muted:C.ko,valign:"top"}); }
+        });
+        pied(sl,`Visiteur : ${V.court}`);
+      }
+    }
+    const nom=`${etat.comp.replace(/\s+/g,"")}_Choix_des_tenues_${D.saison}${sel.js.size<sel.tousJ.length?"_"+plages(sel.js).replace(/[^0-9a-zA-Z]+/g,"-"):""}.pptx`;
+    info.textContent="Écriture du fichier…"; await P.writeFile({fileName:nom,compression:true});
+    info.textContent=`PowerPoint enregistré : ${nom} (${n} diapositive${n>1?"s":""}).`;
+  }catch(e){ info.textContent=txt0; toast("Le PowerPoint n'a pas pu être généré. Rechargez la page et réessayez."); console.error(e); }
+  finally{ b.disabled=false; if(b2) b2.disabled=false; }
+}
+
 /* ---------- Dialogues ---------- */
 function ouvrirDlg(type,arg){ etat.dlg={type,arg}; rendreDlg(); const d=$("#fiche"); if(!d.open) d.showModal(); }
 function rendreDlg(){
@@ -721,14 +892,14 @@ function rendreFiche(a,b){
   const pct=x=>Math.max(0,Math.min(100,x*100)).toFixed(1)+"%";
   const face=k=>`<div class="face"><img src="${k.maillot.img}" alt=""><b>${esc(clubs[k.club].nom)}</b><span>${esc(k.type)} · ${esc(k.couleur)}</span><div class="chips">${chips(k.maillot.pal,3)}</div></div>`;
   const refTxt=!v.ref?"Paire absente du document":v.ref==="conflit"?"✓ dans un sens, ✕ dans l'autre":LIB[v.refV]+(v.ref.endsWith("?")?" (marqué incertain)":"");
-  const decTxt=v.dec?`${LIB[v.dec.v]}, le ${dateFr(v.dec.at)}${qui(v.dec.by)?" par "+esc(qui(v.dec.by)):""}`:"Aucune";
+  const decTxt=v.dec?`${LIB[v.dec.v]}, le ${dateFr(v.dec.at)}${qui(v.dec.by)?" par "+esc(qui(v.dec.by)):""}`:v.aTrancher?"À trancher : la case reste orange tant que vous n'avez pas choisi":"Aucune : le verdict vient du "+(v.src==="document"?"document":"calcul");
   $("#fiche").innerHTML=`<div class="fiche">
     <div><div class="eyebrow">Fiche de la paire</div><h3 id="fiche-titre">${esc(clubs[A.club].court)} ${esc(A.type)} / ${esc(clubs[B.club].court)} ${esc(B.type)}</h3></div>
     <div class="faces">${face(A)}${face(B)}</div>
-    <div><div class="jauge" style="--b1:${pct(G.seuil-G.bande)};--b2:${pct(G.seuil+G.bande)}"><i style="left:${pct(v.s)}"></i></div></div>
+    <div><div class="jauge" style="--b1:${pct(G.seuil)};--b2:${pct(G.seuil)}"><i style="left:${pct(v.s)}"></i></div></div>
     <dl class="faits"><dt>Proximité calculée</dt><dd>${v.s.toFixed(2).replace(".",",")} sur 1, soit « ${LIB[v.calc].toLowerCase()} » (seuil ${String(G.seuil).replace(".",",")})</dd>
       <dt>Document 2026-2027</dt><dd>${refTxt}</dd><dt>Décision</dt><dd>${decTxt}</dd></dl>
-    ${lecture?`<p class="note">Vous consultez en lecture seule : les décisions ne peuvent pas être modifiées.</p>`:`<div class="actions">${["ok","ko","doute"].map(x=>`<button class="btn ${x} ${v.dec&&v.dec.v===x?"actif":""}" data-decide="${x}" data-k="${v.k}">${LIB[x]}</button>`).join("")}${v.dec?`<button class="btn lien" data-annuler="${v.k}">Revenir au document</button>`:""}</div>`}
+    ${lecture?`<p class="note">Vous consultez en lecture seule : les décisions ne peuvent pas être modifiées.</p>`:`<div class="actions">${["ok","ko"].map(x=>`<button class="btn ${x} ${v.dec&&v.dec.v===x?"actif":""}" data-decide="${x}" data-k="${v.k}">${LIB[x]}</button>`).join("")}${v.dec?`<button class="btn lien" data-annuler="${v.k}">Revenir au document</button>`:""}</div>`}
     <footer><span class="eyebrow">Vaut pour les deux sens du déplacement</span><button class="btn plein" data-fermer>Fermer</button></footer></div>`;
 }
 
@@ -747,7 +918,7 @@ function rendre(){
   const onglet=etat.view==="dossier"?"suivi":etat.view;
   $$(".tab").forEach(t=>t.setAttribute("aria-selected",t.dataset.view===onglet));
   const m=$("#main"), y=window.scrollY;
-  m.innerHTML=({suivi:vueSuivi,dossier:vueDossier,rencontres:vueRencontres,"a-trancher":vueTrancher,tenues:vueTenues,visuels:vueVisuels})[etat.view]();
+  m.innerHTML=({suivi:vueSuivi,dossier:vueDossier,rencontres:vueRencontres,"a-trancher":vueTrancher,tenues:vueTenues,visuels:vueVisuels,export:vueExport})[etat.view]();
   rendreStats();
   if(etat.view==="visuels") chargerGabarits().then(()=>dessiner("cv-",GEN)).catch(()=>{});
   if(etat.view==="dossier") apresDossier();
@@ -796,6 +967,12 @@ document.addEventListener("click",e=>{
   if(ds.lienRegen){ if(!etat.dlg.confirme){ etat.dlg.confirme=true; return rendreDlg(); } return definirLien(ds.lienRegen).then(ok=>{ etat.dlg.confirme=false; rendreDlg(); if(ok) toast("Nouveau lien créé. L'ancien ne fonctionne plus."); }); }
   if("lienCopier" in ds) return copier($("#l-url").value,"Lien copié.");
   if(t.id==="b-liens") return copierLiens();
+  if(ds.expClubs){ const sel=selExport(); sel.clubs=new Set(ds.expClubs==="tous"?Object.values(clubs).filter(c=>c.comp===etat.comp).map(c=>c.id):[]); return rendre(); }
+  if(ds.expClub){ const sel=selExport(); sel.clubs.has(ds.expClub)?sel.clubs.delete(ds.expClub):sel.clubs.add(ds.expClub); return rendre(); }
+  if(ds.expJ){ const sel=selExport(), m=Math.ceil(sel.tousJ.length/2); sel.js=new Set(ds.expJ==="toutes"?sel.tousJ:ds.expJ==="aller"?sel.tousJ.slice(0,m):ds.expJ==="retour"?sel.tousJ.slice(m):[]); return rendre(); }
+  if(ds.expJour){ const sel=selExport(), j=+ds.expJour; sel.js.has(j)?sel.js.delete(j):sel.js.add(j); return rendre(); }
+  if(t.id==="b-pdf") return genererPdf();
+  if(t.id==="b-ppt") return genererPpt();
   if(ds.relance) return ouvrirDlg("relance",ds.relance);
   if(ds.relSave){ ecrireClub(ds.relSave,{relancePar:$("#c-rel").value.trim().slice(0,80)}); return $("#fiche").close(); }
   if(ds.noterRelance){ const C=clubDe(ds.noterRelance); ecrireClub(C.id,{relancePar:$("#c-rel").value.trim().slice(0,80),relances:(C.relances||[]).concat([{le:new Date().toISOString(),par:monId||null}]).slice(-30)}); $("#fiche").close(); return toast("Relance notée."); }
@@ -817,6 +994,8 @@ document.addEventListener("input",e=>{
 });
 document.addEventListener("change",e=>{
   if(e.target.id==="s-pipette"||e.target.id==="s-cible"){ pipette=e.target.value; const a=$("#s-pipette"), b=$("#s-cible"); if(a) a.value=pipette; if(b) b.value=pipette; }
+  if(e.target.id==="x-couv"){ selExport().couverture=e.target.checked; return rendre(); }
+  if(e.target.id==="x-cons"){ selExport().conseil=e.target.checked; return rendre(); }
   if(e.target.id==="f-releves"&&e.target.files&&e.target.files[0]){ importerReleves(e.target.files[0]); e.target.value=""; }
   if(e.target.id==="moi"){ monId=e.target.value.trim().slice(0,30); try{localStorage.setItem("tenues.moi",monId);}catch(_){ } }
   if(e.target.id==="f-bat"&&e.target.files&&e.target.files[0]) deposer(e.target.files[0]);
@@ -837,7 +1016,7 @@ async function copier(txt,ok){ try{ await navigator.clipboard.writeText(txt); to
 async function definirLien(id){
   const j=crypto.randomUUID();
   try{ await store.definirLien(id,j); liens[id]=j; return true; }
-  catch(e){ toast("Le lien n'a pas pu être créé. Vérifiez que le script V0.2.0 a bien été lancé dans Supabase."); return false; }
+  catch(e){ toast("Le lien n'a pas pu être créé. Vérifiez que le script V0.3.0 a bien été lancé dans Supabase."); return false; }
 }
 async function copierLiens(){
   const cs=listeClubs(etat.comp); let crees=0;
@@ -930,7 +1109,7 @@ async function demarrer(){
   try{ D=await (await fetch("data.json")).json(); }
   catch(e){ $("#main").innerHTML=`<p class="vide-etat">Les données de la saison n'ont pas pu être chargées. Rechargez la page.</p>`; $("#sync").textContent="Hors ligne"; return; }
   etat.club=D.clubs[0].id;
-  const h=(location.hash||"").slice(1); if(["suivi","rencontres","a-trancher","tenues","visuels"].includes(h)) etat.view=h;
+  const h=(location.hash||"").slice(1); if(["suivi","rencontres","a-trancher","tenues","visuels","export"].includes(h)) etat.view=h;
   const cfg=window.TENUES_CONFIG||{}, pret=/^https:\/\/.+/.test(cfg.SUPABASE_URL||"")&&(cfg.SUPABASE_ANON_KEY||"").length>20&&window.supabase;
   store=pret?storeSupabase(cfg.SUPABASE_URL,cfg.SUPABASE_ANON_KEY):storeLocal();
   $$(".tab").forEach(t=>t.hidden=true);
