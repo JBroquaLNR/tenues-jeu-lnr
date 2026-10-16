@@ -334,7 +334,7 @@ dialog::backdrop{background:rgba(8,12,18,.55)}
 
 <main class="wrap" id="main"><p class="vide-etat">Chargement des tenues de la saison…</p></main>
 
-<footer class="wrap pied">Tenues de jeu LNR · V0.3.1</footer>
+<footer class="wrap pied">Tenues de jeu LNR · V0.3.2</footer>
 <dialog id="fiche" aria-labelledby="fiche-titre"></dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 
@@ -931,8 +931,8 @@ function rendreFiche(a,b){
   $("#fiche").innerHTML=`<div class="fiche">
     <div><div class="eyebrow">Fiche de la paire</div><h3 id="fiche-titre">${esc(clubs[A.club].court)} ${esc(A.type)} / ${esc(clubs[B.club].court)} ${esc(B.type)}</h3></div>
     <div class="faces">${face(A)}${face(B)}</div>
-    <div><div class="jauge" style="--b1:${pct(G.seuil)};--b2:${pct(G.seuil)}"><i style="left:${pct(v.s)}"></i></div></div>
-    <dl class="faits"><dt>Proximité calculée</dt><dd>${v.s.toFixed(2).replace(".",",")} sur 1, soit « ${LIB[v.calc].toLowerCase()} » (seuil ${String(G.seuil).replace(".",",")})</dd>
+    <div><div class="jauge" style="--b1:${pct(G.seuil-G.bande)};--b2:${pct(G.seuil+G.bande)}"><i style="left:${pct(v.s)}"></i></div></div>
+    <dl class="faits"><dt>Proximité calculée</dt><dd>${v.s.toFixed(2).replace(".",",")} sur 1, soit « ${net(v.s)?LIB[v.calc].toLowerCase():"à vérifier"} » (seuil ${String(G.seuil).replace(".",",")}, zone orange de ${String(Math.round((G.seuil-G.bande)*100)/100).replace(".",",")} à ${String(Math.round((G.seuil+G.bande)*100)/100).replace(".",",")})</dd>
       <dt>Document 2026-2027</dt><dd>${refTxt}</dd><dt>Décision</dt><dd>${decTxt}</dd></dl>
     ${lecture?`<p class="note">Vous consultez en lecture seule : les décisions ne peuvent pas être modifiées.</p>`:`<div class="actions">${["ok","ko"].map(x=>`<button class="btn ${x} ${v.dec&&v.dec.v===x?"actif":""}" data-decide="${x}" data-k="${v.k}">${LIB[x]}</button>`).join("")}${v.dec?`<button class="btn lien" data-annuler="${v.k}">Revenir au document</button>`:""}</div>`}
     <footer><span class="eyebrow">Vaut pour les deux sens du déplacement</span><button class="btn plein" data-fermer>Fermer</button></footer></div>`;
