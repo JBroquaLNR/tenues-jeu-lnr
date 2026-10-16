@@ -1,4 +1,4 @@
-# Tenues de jeu LNR · V0.3.0
+# Tenues de jeu LNR · V0.3.1
 
 Site de dépôt, de validation et de compatibilité des tenues de jeu (TOP 14 et PRO D2).
 Cette version contient **l'admin** (suivi, validation, paires à trancher, matrices, catalogue, visuels)
@@ -6,6 +6,12 @@ et **l'espace club** : un lien secret par club, pour déposer ses tenues et suiv
 La V0.3.0 ajoute l'**export** PDF ou PowerPoint des matrices (onglet Export) et l'affichage en **orange**
 des paires encore à trancher.
 Les options par déplacement, publiées depuis l'admin, arrivent dans la version suivante.
+
+## V0.3.1
+
+Habillage aux couleurs de la LNR (bleu marine et rouge du logo) : page d'accueil, bandeau de l'admin et de l'espace club,
+couverture et en-têtes des exports PDF et PowerPoint. Le logo est dans `public/img/lnr-logo.png` (et `lnr-logo-hd.png`
+pour les exports). Décompressez et envoyez sur GitHub, rien à faire dans Supabase.
 
 ## Passer de la V0.2.0 à la V0.3.0
 

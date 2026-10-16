@@ -300,13 +300,38 @@ dialog::backdrop{background:rgba(8,12,18,.55)}
 .etapes{display:flex;flex-direction:column;gap:16px}
 .etape>h3 .num{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.08em}
 .envoi{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+
+/* Charte LNR : bleu marine et rouge du logo. Bandeau marine en tête de page, filet rouge, logo à gauche. */
+:root{ --lnr-bleu:#002367; --lnr-rouge:#ff004d; --accent:#002367; --accent-bg:#e1e7f4; --bg:#eef1f6; }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --accent:#9db3ff; --accent-bg:#1b2a55; --bg:#0b1120; } }
+:root[data-theme="dark"]{ --accent:#9db3ff; --accent-bg:#1b2a55; --bg:#0b1120; }
+.marque{background-color:var(--lnr-bleu);background-image:linear-gradient(112deg,transparent 0 58%,rgba(255,255,255,.045) 58% 71%,transparent 71% 76%,rgba(255,255,255,.03) 76% 80%,transparent 80%);color:#fff;border-bottom:5px solid var(--lnr-rouge)}
+.marque .eyebrow{color:rgba(255,255,255,.72)}
+.marque h1{color:#fff}
+.ident{display:flex;gap:20px;align-items:center;min-width:0}
+.logo-lnr{height:92px;width:auto;display:block;flex:none}
+.marque .stats b{color:#fff}
+.marque .stats span{color:rgba(255,255,255,.72)}
+.marque .stats li.alerte b{color:#ffc76b}
+.marque .seg{background:transparent;border-color:rgba(255,255,255,.4)}
+.marque .seg button{color:rgba(255,255,255,.82)}
+.marque .seg button[aria-pressed="true"]{background:#fff;color:var(--lnr-bleu)}
+.marque .tuile-club{background:#fff;border-radius:8px;padding:6px;display:grid;place-items:center;width:64px;height:64px;flex:none}
+.marque .tuile-club img{width:52px;height:52px;object-fit:contain}
+.tab[aria-selected="true"]{border-bottom-color:var(--lnr-rouge)}
+.match .j{color:var(--lnr-rouge)}
+.btn.plein{background:var(--lnr-bleu);border-color:var(--lnr-bleu);color:#fff}
+.view-head h2{color:var(--accent)}
+.top{padding-block:16px 16px;align-items:center}
+.entete{padding-block:16px}
+.entete .eyebrow{color:rgba(255,255,255,.72)}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header class="entete" id="entete"><div><div class="eyebrow">LNR · Tenues de jeu</div><h1>Espace club</h1></div></header>
+<header class="marque"><div class="wrap entete ident" id="entete"><img class="logo-lnr" src="img/lnr-logo.png" alt="Ligue Nationale de Rugby"><div><div class="eyebrow">Tenues de jeu</div><h1>Espace club</h1></div></div></header>
+<div class="wrap" style="padding-top:22px">
   <main id="main"><p class="vide-etat">Chargement…</p></main>
-  <footer class="pied" style="padding-top:28px">Tenues de jeu LNR · V0.3.0</footer>
+  <footer class="pied" style="padding-top:28px">Tenues de jeu LNR · V0.3.1</footer>
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
 <script src="config.js"></script>
@@ -511,7 +536,7 @@ async function demarrer(){
   store=pret?storeSupabase(cfg.SUPABASE_URL,cfg.SUPABASE_ANON_KEY):storeLocal();
   let ok=false; try{ ok=await charger(); }catch(e){ return refus("Page indisponible","La connexion à la LNR n'a pas abouti. Rechargez la page dans un instant."); }
   if(!ok) return refus("Lien non reconnu","Ce lien n'est pas ou plus valide. Demandez un nouveau lien à la LNR.");
-  $("#entete").innerHTML=`${club.logo?`<img src="${club.logo}" alt="">`:""}<div><div class="eyebrow">LNR · Tenues de jeu · ${esc(club.comp)}</div><h1>${esc(club.nom)}</h1></div>`;
+  $("#entete").innerHTML=`<img class="logo-lnr" src="img/lnr-logo.png" alt="Ligue Nationale de Rugby">${club.logo?`<span class="tuile-club"><img src="${club.logo}" alt=""></span>`:""}<div><div class="eyebrow">Tenues de jeu · ${esc(club.comp)} · Saison ${esc(D.saison)}</div><h1>${esc(club.nom)}</h1></div>`;
   document.title=`Tenues de jeu · ${club.nom}`;
   rendre(); chargerGabarits().then(()=>{ if(vue==="accueil") rendre(); }).catch(()=>{});
 }

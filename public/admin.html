@@ -282,17 +282,38 @@ dialog::backdrop{background:rgba(8,12,18,.55)}
 .bandeau{background:var(--doute-bg);color:var(--doute);border-radius:6px;padding:8px 12px;margin-bottom:16px;font-size:13px}
 .pastille{width:34px;height:34px;border-radius:4px;border:1px solid var(--line);padding:0}
 .pied{color:var(--muted);font-size:12px;padding-block:0 28px}
+
+/* Charte LNR : bleu marine et rouge du logo. Bandeau marine en tête de page, filet rouge, logo à gauche. */
+:root{ --lnr-bleu:#002367; --lnr-rouge:#ff004d; --accent:#002367; --accent-bg:#e1e7f4; --bg:#eef1f6; }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --accent:#9db3ff; --accent-bg:#1b2a55; --bg:#0b1120; } }
+:root[data-theme="dark"]{ --accent:#9db3ff; --accent-bg:#1b2a55; --bg:#0b1120; }
+.marque{background-color:var(--lnr-bleu);background-image:linear-gradient(112deg,transparent 0 58%,rgba(255,255,255,.045) 58% 71%,transparent 71% 76%,rgba(255,255,255,.03) 76% 80%,transparent 80%);color:#fff;border-bottom:5px solid var(--lnr-rouge)}
+.marque .eyebrow{color:rgba(255,255,255,.72)}
+.marque h1{color:#fff}
+.ident{display:flex;gap:20px;align-items:center;min-width:0}
+.logo-lnr{height:92px;width:auto;display:block;flex:none}
+.marque .stats b{color:#fff}
+.marque .stats span{color:rgba(255,255,255,.72)}
+.marque .stats li.alerte b{color:#ffc76b}
+.marque .seg{background:transparent;border-color:rgba(255,255,255,.4)}
+.marque .seg button{color:rgba(255,255,255,.82)}
+.marque .seg button[aria-pressed="true"]{background:#fff;color:var(--lnr-bleu)}
+.marque .tuile-club{background:#fff;border-radius:8px;padding:6px;display:grid;place-items:center;width:64px;height:64px;flex:none}
+.marque .tuile-club img{width:52px;height:52px;object-fit:contain}
+.tab[aria-selected="true"]{border-bottom-color:var(--lnr-rouge)}
+.match .j{color:var(--lnr-rouge)}
+.btn.plein{background:var(--lnr-bleu);border-color:var(--lnr-bleu);color:#fff}
+.view-head h2{color:var(--accent)}
+.top{padding-block:16px 16px;align-items:center}
 </style>
 </head>
 <body>
-<header class="wrap top">
-  <div>
-    <div class="eyebrow" id="saison">LNR · Saison 2026-2027</div>
-    <h1>Tenues de jeu</h1>
-  </div>
+<header class="marque"><div class="wrap top">
+  <div class="ident"><img class="logo-lnr" src="img/lnr-logo.png" alt="Ligue Nationale de Rugby">
+    <div><div class="eyebrow" id="saison">Saison 2026-2027</div><h1>Tenues de jeu</h1></div></div>
   <div class="seg" role="group" aria-label="Championnat" id="seg-comp"></div>
   <ul class="stats" id="stats" aria-label="Chiffres de la saison"></ul>
-</header>
+</div></header>
 <div class="wrap session" id="session" hidden>
   <label for="moi">Votre prénom, pour l'historique</label><input type="text" id="moi" maxlength="30" autocomplete="given-name">
   <button class="btn petit" id="b-actualiser">Actualiser</button>
@@ -313,7 +334,7 @@ dialog::backdrop{background:rgba(8,12,18,.55)}
 
 <main class="wrap" id="main"><p class="vide-etat">Chargement des tenues de la saison…</p></main>
 
-<footer class="wrap pied">Tenues de jeu LNR · V0.3.0</footer>
+<footer class="wrap pied">Tenues de jeu LNR · V0.3.1</footer>
 <dialog id="fiche" aria-labelledby="fiche-titre"></dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 
@@ -724,9 +745,9 @@ function vueExport(){
 let jspdfP=null;
 function chargerJspdf(){ if(!jspdfP) jspdfP=new Promise((ok,ko)=>{ const s=document.createElement("script"); s.src="lib/jspdf.umd.min.js"; s.onload=()=>window.jspdf?ok(window.jspdf):ko(new Error("jspdf")); s.onerror=ko; document.head.appendChild(s); }); return jspdfP; }
 const imgPdf={};
-async function imagePdf(src){
-  if(imgPdf[src]) return imgPdf[src];
-  return imgPdf[src]=(async()=>{ try{ const im=await image(src), sc=Math.min(1,240/Math.max(im.naturalWidth,im.naturalHeight)), cv=document.createElement("canvas");
+async function imagePdf(src,max){
+  const cle=src+"|"+(max||240); if(imgPdf[cle]) return imgPdf[cle];
+  return imgPdf[cle]=(async()=>{ try{ const im=await image(src), sc=Math.min(1,(max||240)/Math.max(im.naturalWidth,im.naturalHeight)), cv=document.createElement("canvas");
     cv.width=Math.max(1,Math.round(im.naturalWidth*sc)); cv.height=Math.max(1,Math.round(im.naturalHeight*sc)); const c=cv.getContext("2d"); c.fillStyle="#fff"; c.fillRect(0,0,cv.width,cv.height); c.drawImage(im,0,0,cv.width,cv.height);
     return {data:cv.toDataURL("image/jpeg",.88),w:cv.width,h:cv.height}; }catch(e){ return null; } })();
 }
@@ -737,26 +758,30 @@ async function genererPdf(){
     const {jsPDF}=await chargerJspdf(); await chargerGabarits().catch(()=>{}); reconstruire();
     const cs=Object.values(clubs).filter(c=>c.comp===etat.comp&&sel.clubs.has(c.id)), srcs=new Set();
     for(const c of Object.values(clubs).filter(c=>c.comp===etat.comp)){ srcs.add(c.logo); c.tenues.forEach(k=>srcs.add(k.maillot.img)); }
-    const I={}; for(const s of srcs) I[s]=await imagePdf(s);
+    const I={}; for(const s of srcs) I[s]=await imagePdf(s); I.lnr=await imagePdf("img/lnr-logo-hd.png",900);
     const W=960, H=540, M=28, doc=new jsPDF({orientation:"landscape",unit:"pt",format:[W,H],compress:true});
-    const C={ink:[18,24,33],muted:[90,101,115],line:[211,217,224],accent:[28,61,184],ok:[18,110,68],okb:[220,240,229],ko:[173,36,28],kob:[248,220,217],doute:[138,88,0],douteb:[251,234,198],fond:[245,247,249]};
+    const C={ink:[18,24,33],muted:[90,101,115],line:[211,217,224],accent:[28,61,184],ok:[18,110,68],okb:[220,240,229],ko:[173,36,28],kob:[248,220,217],doute:[138,88,0],douteb:[251,234,198],fond:[245,247,249],bleu:[0,35,103],rouge:[255,0,77],blanc:[255,255,255],clair:[205,214,236]};
     const col=(k,f)=>(f?doc.setFillColor:doc.setDrawColor).apply(doc,C[k]), tc=k=>doc.setTextColor.apply(doc,C[k]);
     const police=(t,g)=>{ doc.setFont("helvetica",g?"bold":"normal"); doc.setFontSize(t); };
     const titre=`${etat.comp} ${D.saison}`, today=new Date().toLocaleDateString("fr-FR");
     const imgBox=(src,x,y,w,h)=>{ const i=I[src]; if(!i) return; const r=Math.min(w/i.w,h/i.h), iw=i.w*r, ih=i.h*r; doc.addImage(i.data,"JPEG",x+(w-iw)/2,y+(h-ih)/2,iw,ih,undefined,"FAST"); };
     const coupe=(t,max,lig)=>{ const l=doc.splitTextToSize(String(t||""),max); return l.slice(0,lig||1).map((x,i)=>i===(lig||1)-1&&l.length>(lig||1)?x.replace(/.{0,2}$/,"…"):x); };
     const marque=(v,x,y,s)=>{ doc.setLineWidth(Math.max(1.4,s*.09)); col(v); if(v==="doute"){ police(Math.max(8,s*1.05),true); tc("doute"); doc.text("?",x,y+s*.36,{align:"center"}); return; } if(v==="ok"){ doc.line(x-s*.28,y,x-s*.08,y+s*.2); doc.line(x-s*.08,y+s*.2,x+s*.3,y-s*.22); } else { doc.line(x-s*.22,y-s*.22,x+s*.22,y+s*.22); doc.line(x-s*.22,y+s*.22,x+s*.22,y-s*.22); } };
-    const legende=(x,y)=>{ for(const [v,l] of [["ok","Compatible"],["ko","À éviter"],["doute","À trancher"]]){ col(v+"b",true); doc.roundedRect(x,y-9,14,12,2,2,"F"); marque(v,x+7,y-3,12); police(8.5); tc("ink"); doc.text(l,x+19,y); x+=19+doc.getTextWidth(l)+18; } return x; };
+    const legende=(x,y,clair)=>{ for(const [v,l] of [["ok","Compatible"],["ko","À éviter"],["doute","À trancher"]]){ col(v+"b",true); doc.roundedRect(x,y-9,14,12,2,2,"F"); marque(v,x+7,y-3,12); police(8.5); tc(clair?"blanc":"ink"); doc.text(l,x+19,y); x+=19+doc.getTextWidth(l)+18; } return x; };
     let page=0; const nouvellePage=()=>{ if(page++) doc.addPage([W,H],"landscape"); };
     const pied=(gauche)=>{ col("line"); doc.setLineWidth(.6); doc.line(M,H-30,W-M,H-30); const x=legende(M,H-14); police(8); tc("muted"); doc.text(gauche,x+6,H-14); doc.text(`LNR · Tenues de jeu · ${titre} · ${today} · page ${page}`,W-M,H-14,{align:"right"}); };
+    const bande=(x0,larg,op)=>{ doc.setGState(new doc.GState({opacity:op})); col("blanc",true); doc.triangle(x0,0,x0+larg,0,x0+larg-170,H,"F"); doc.triangle(x0,0,x0+larg-170,H,x0-170,H,"F"); doc.setGState(new doc.GState({opacity:1})); };
     if(sel.couverture){
-      nouvellePage(); col("fond",true); doc.rect(0,0,W,H,"F");
-      police(14,true); tc("accent"); doc.text("LIGUE NATIONALE DE RUGBY",M+12,110);
-      police(46,true); tc("ink"); doc.text(titre,M+12,165); police(30,false); doc.text("Choix des tenues en déplacement",M+12,205);
-      police(11); tc("muted");
-      const lignes=[`Clubs : ${cs.length===Object.values(clubs).filter(c=>c.comp===etat.comp).length?"tous":cs.map(c=>c.court).join(", ")}`,`Journées : ${plages(sel.js)}`,"Pour chaque déplacement : en haut, les maillots du club recevant ; à gauche, ceux du club visiteur.","Une case verte indique deux maillots compatibles, une case rouge deux maillots à éviter, une case orange une paire que la LNR n'a pas encore tranchée."];
-      let y=260; for(const l of lignes){ for(const x of doc.splitTextToSize(l,W-2*M-24)){ doc.text(x,M+12,y); y+=17; } y+=4; }
-      legende(M+12,y+18); police(9); tc("muted"); doc.text(`Document généré le ${today} depuis la plateforme Tenues de jeu.`,M+12,H-36);
+      nouvellePage(); col("bleu",true); doc.rect(0,0,W,H,"F"); bande(W*.62,120,.05); bande(W*.62+160,36,.035);
+      const lh=372, lw=I.lnr?lh*I.lnr.w/I.lnr.h:196; if(I.lnr) doc.addImage(I.lnr.data,"JPEG",M+30,(H-lh)/2-10,lw,lh,undefined,"FAST");
+      const tx=M+30+lw+46;
+      police(12,true); tc("clair"); doc.text("LIGUE NATIONALE DE RUGBY",tx,150);
+      police(50,true); tc("blanc"); doc.text(titre,tx,200); police(28,false); doc.text("Choix des tenues en déplacement",tx,238);
+      col("rouge",true); doc.rect(tx,256,64,6,"F");
+      police(11); tc("clair");
+      const lignes=[`Clubs : ${cs.length===Object.values(clubs).filter(c=>c.comp===etat.comp).length?"tous":cs.map(c=>c.court).join(", ")}`,`Journées : ${plages(sel.js)}`,"Pour chaque déplacement : en haut, les maillots du club recevant ; à gauche, ceux du club visiteur.","Case verte : maillots compatibles. Case rouge : à éviter. Case orange : paire pas encore tranchée par la LNR."];
+      let y=292; for(const l of lignes){ for(const x of doc.splitTextToSize(l,W-tx-M-10)){ doc.text(x,tx,y); y+=16; } y+=3; }
+      legende(tx,y+16,true); police(9); tc("clair"); doc.text(`Document généré le ${today} depuis la plateforme Tenues de jeu.`,tx,H-40);
     }
     let fait=0; const total=cs.length;
     for(const V of cs){
@@ -765,15 +790,17 @@ async function genererPdf(){
       const tousDep=D.matchs.filter(m=>m.comp===etat.comp&&m.ext===V.id).length;
       for(let p=0;p<ds.length;p+=PAR_PAGE){
         nouvellePage(); const lot=ds.slice(p,p+PAR_PAGE);
-        imgBox(V.logo,M,22,40,40); police(24,true); tc("ink"); doc.text(V.nom,M+50,46); police(9.5); tc("muted");
-        doc.text(`Choix des tenues en déplacement · ${titre}`,M+51,60);
-        doc.text(`${lot.length} déplacement${lot.length>1?"s":""} sur ${tousDep}${ds.length>PAR_PAGE?` · page ${p/PAR_PAGE+1} sur ${Math.ceil(ds.length/PAR_PAGE)} pour ce club`:""}`,W-M,46,{align:"right"});
-        doc.text("En haut : maillots du club recevant. À gauche : vos maillots.",W-M,60,{align:"right"});
-        const gx=12, gy=12, cw=(W-2*M-3*gx)/4, ch=(H-78-36-gy)/2;
+        col("bleu",true); doc.rect(0,0,W,70,"F"); bande(W*.58,90,.05); col("rouge",true); doc.rect(0,70,W,4,"F");
+        col("blanc",true); doc.roundedRect(M,13,44,44,5,5,"F"); imgBox(V.logo,M+4,17,36,36);
+        police(24,true); tc("blanc"); doc.text(V.nom,M+56,38); police(9.5); tc("clair"); doc.text(`Choix des tenues en déplacement · ${titre}`,M+57,54);
+        const lw2=I.lnr?58*I.lnr.w/I.lnr.h:30; if(I.lnr) doc.addImage(I.lnr.data,"JPEG",W-M-lw2,6,lw2,58,undefined,"FAST");
+        doc.text(`${lot.length} déplacement${lot.length>1?"s":""} sur ${tousDep}${ds.length>PAR_PAGE?` · page ${p/PAR_PAGE+1} sur ${Math.ceil(ds.length/PAR_PAGE)} pour ce club`:""}`,W-M-lw2-16,38,{align:"right"});
+        doc.text("En haut : maillots du club recevant. À gauche : vos maillots.",W-M-lw2-16,54,{align:"right"});
+        const gx=12, gy=12, cw=(W-2*M-3*gx)/4, ch=(H-86-36-gy)/2;
         lot.forEach((m,i)=>{
-          const R=clubs[m.dom], x=M+(i%4)*(cw+gx), y=78+Math.floor(i/4)*(ch+gy), pad=9;
+          const R=clubs[m.dom], x=M+(i%4)*(cw+gx), y=86+Math.floor(i/4)*(ch+gy), pad=9;
           col("line"); doc.setLineWidth(.7); doc.roundedRect(x,y,cw,ch,5,5,"S");
-          police(13,true); tc("accent"); doc.text("J"+m.j,x+pad,y+19); const wj=doc.getTextWidth("J"+m.j);
+          police(13,true); tc("rouge"); doc.text("J"+m.j,x+pad,y+19); const wj=doc.getTextWidth("J"+m.j);
           police(11,true); tc("ink"); doc.text(coupe("Chez "+R.court,cw-2*pad-wj-8)[0],x+pad+wj+7,y+19);
           const nc=R.tenues.length, nr=V.tenues.length, rh=64, top=y+28, labH=16;
           const cell=Math.min(40,(cw-2*pad-rh-(nc-1)*3)/nc), cellH=Math.min(30,(ch-(top-y)-30-labH-6-(sel.conseil?18:4)-(nr-1)*3)/nr);
@@ -805,11 +832,11 @@ async function genererPpt(){
     const PptxGenJS=await chargerPpt(); await chargerGabarits().catch(()=>{}); reconstruire();
     const cs=Object.values(clubs).filter(c=>c.comp===etat.comp&&sel.clubs.has(c.id)), srcs=new Set();
     for(const c of Object.values(clubs).filter(c=>c.comp===etat.comp)){ srcs.add(c.logo); c.tenues.forEach(k=>srcs.add(k.maillot.img)); }
-    const I={}; for(const s of srcs) I[s]=await imagePdf(s);
+    const I={}; for(const s of srcs) I[s]=await imagePdf(s); I.lnr=await imagePdf("img/lnr-logo-hd.png",900);
     const P=new PptxGenJS(); P.layout="LAYOUT_WIDE"; P.author="LNR"; P.company="Ligue Nationale de Rugby";
     const titre=`${etat.comp} ${D.saison}`, today=new Date().toLocaleDateString("fr-FR"); P.title=`${titre} · Choix des tenues en déplacement`;
     const W=960, H=540, M=28, i=v=>v/72;
-    const C={ink:"121821",muted:"5A6573",line:"D3D9E0",accent:"1C3DB8",ok:"126E44",okb:"DCF0E5",ko:"AD241C",kob:"F8DCD9",doute:"8A5800",douteb:"FBEAC6",fond:"F5F7F9",blanc:"FFFFFF"};
+    const C={ink:"121821",muted:"5A6573",line:"D3D9E0",accent:"1C3DB8",ok:"126E44",okb:"DCF0E5",ko:"AD241C",kob:"F8DCD9",doute:"8A5800",douteb:"FBEAC6",fond:"F5F7F9",blanc:"FFFFFF",bleu:"002367",rouge:"FF004D",clair:"CDD6EC"};
     const F="Arial", SYMF="Segoe UI Symbol", MARQ={ok:"✓",ko:"✕",doute:"?"};
     const coupe=(t,largeur,taille,lig)=>{ t=String(t||""); const max=Math.max(4,Math.floor(largeur/(taille*.52))), out=[]; let reste=t;
       while(reste&&out.length<(lig||1)){ if(reste.length<=max){ out.push(reste); reste=""; break; } let k=reste.lastIndexOf(" ",max); if(k<max*.5) k=max; out.push(reste.slice(0,k).trim()); reste=reste.slice(k).trim(); }
@@ -817,17 +844,21 @@ async function genererPpt(){
     const texte=(sl,t,x,y,w,h,o)=>sl.addText(t,Object.assign({x:i(x),y:i(y),w:i(w),h:i(h),fontFace:F,fontSize:9,color:C.ink,margin:0,valign:"middle"},o||{}));
     const imgBox=(sl,src,x,y,w,h)=>{ const im=I[src]; if(!im) return; const r=Math.min(w/im.w,h/im.h), iw=im.w*r, ih=im.h*r; sl.addImage({data:im.data.replace(/^data:/,""),x:i(x+(w-iw)/2),y:i(y+(h-ih)/2),w:i(iw),h:i(ih)}); };
     const caseV=(sl,v,x,y,w,h,taille)=>sl.addText(MARQ[v],{shape:P.ShapeType.roundRect,rectRadius:.04,x:i(x),y:i(y),w:i(w),h:i(h),fill:{color:C[v+"b"]},line:{color:C[v+"b"],width:0},color:C[v],bold:true,fontFace:SYMF,fontSize:taille,align:"center",valign:"middle",margin:0});
-    const legende=(sl,x,y)=>{ for(const [v,l] of [["ok","Compatible"],["ko","À éviter"],["doute","À trancher"]]){ caseV(sl,v,x,y-10,14,12,8); texte(sl,l,x+19,y-11,70,14,{fontSize:8.5}); x+=19+l.length*4.6+18; } return x; };
+    const legende=(sl,x,y,clair)=>{ for(const [v,l] of [["ok","Compatible"],["ko","À éviter"],["doute","À trancher"]]){ caseV(sl,v,x,y-10,14,12,8); texte(sl,l,x+19,y-11,70,14,{fontSize:8.5,color:clair?C.blanc:C.ink}); x+=19+l.length*4.6+18; } return x; };
     let n=0; const pied=(sl,gauche)=>{ n++; sl.addShape(P.ShapeType.line,{x:i(M),y:i(H-30),w:i(W-2*M),h:0,line:{color:C.line,width:.6}}); const x=legende(sl,M,H-14);
       texte(sl,gauche,x+6,H-25,200,14,{fontSize:8,color:C.muted}); texte(sl,`LNR · Tenues de jeu · ${titre} · ${today} · ${n}`,W-M-420,H-25,420,14,{fontSize:8,color:C.muted,align:"right"}); };
+    const bandeP=(sl,x0,larg,transp,h)=>sl.addShape(P.ShapeType.parallelogram,{x:i(x0-170),y:0,w:i(larg+170),h:i(h||H),fill:{color:C.blanc,transparency:transp},line:{color:C.blanc,transparency:100},flipH:false});
+    const logo=(sl,x,y,h)=>{ if(!I.lnr) return 0; const w=h*I.lnr.w/I.lnr.h; sl.addImage({data:I.lnr.data.replace(/^data:/,""),x:i(x),y:i(y),w:i(w),h:i(h)}); return w; };
     if(sel.couverture){
-      const sl=P.addSlide(); sl.background={color:C.fond}; n++;
-      texte(sl,"LIGUE NATIONALE DE RUGBY",M+12,94,600,20,{fontSize:14,bold:true,color:C.accent});
-      texte(sl,titre,M+12,124,880,52,{fontSize:46,bold:true}); texte(sl,"Choix des tenues en déplacement",M+12,180,880,36,{fontSize:30});
+      const sl=P.addSlide(); sl.background={color:C.bleu}; n++; bandeP(sl,W*.62,120,95); bandeP(sl,W*.62+160,36,96.5);
+      const lh=372, lw=logo(sl,M+30,(H-lh)/2-10,lh)||196, tx=M+30+lw+46;
+      texte(sl,"LIGUE NATIONALE DE RUGBY",tx,138,500,18,{fontSize:12,bold:true,color:C.clair});
+      texte(sl,titre,tx,160,W-tx-M,50,{fontSize:50,bold:true,color:C.blanc}); texte(sl,"Choix des tenues en déplacement",tx,212,W-tx-M,34,{fontSize:28,color:C.blanc});
+      sl.addShape(P.ShapeType.rect,{x:i(tx),y:i(256),w:i(64),h:i(6),fill:{color:C.rouge},line:{color:C.rouge,width:0}});
       const tous=cs.length===Object.values(clubs).filter(c=>c.comp===etat.comp).length;
-      const lignes=[`Clubs : ${tous?"tous":cs.map(c=>c.court).join(", ")}`,`Journées : ${plages(sel.js)}`,"Pour chaque déplacement : en haut, les maillots du club recevant ; à gauche, ceux du club visiteur.","Une case verte indique deux maillots compatibles, une case rouge deux maillots à éviter, une case orange une paire que la LNR n'a pas encore tranchée."];
-      sl.addText(lignes.map(t=>({text:t,options:{breakLine:true,paraSpaceAfter:6}})),{x:i(M+12),y:i(244),w:i(W-2*M-24),h:i(110),fontFace:F,fontSize:11,color:C.muted,margin:0,valign:"top"});
-      legende(sl,M+12,384); texte(sl,`Document généré le ${today} depuis la plateforme Tenues de jeu.`,M+12,H-50,600,16,{fontSize:9,color:C.muted});
+      const lignes=[`Clubs : ${tous?"tous":cs.map(c=>c.court).join(", ")}`,`Journées : ${plages(sel.js)}`,"Pour chaque déplacement : en haut, les maillots du club recevant ; à gauche, ceux du club visiteur.","Case verte : maillots compatibles. Case rouge : à éviter. Case orange : paire pas encore tranchée par la LNR."];
+      sl.addText(lignes.map(t=>({text:t,options:{breakLine:true,paraSpaceAfter:5}})),{x:i(tx),y:i(280),w:i(W-tx-M),h:i(120),fontFace:F,fontSize:11,color:C.clair,margin:0,valign:"top"});
+      legende(sl,tx,420,true); texte(sl,`Document généré le ${today} depuis la plateforme Tenues de jeu.`,tx,H-50,W-tx-M,16,{fontSize:9,color:C.clair});
     }
     let fait=0;
     for(const V of cs){
@@ -836,14 +867,18 @@ async function genererPpt(){
       const tousDep=D.matchs.filter(m=>m.comp===etat.comp&&m.ext===V.id).length;
       for(let p=0;p<ds.length;p+=PAR_PAGE){
         const sl=P.addSlide(); sl.background={color:C.blanc}; const lot=ds.slice(p,p+PAR_PAGE);
-        imgBox(sl,V.logo,M,22,40,40); texte(sl,V.nom,M+50,24,520,28,{fontSize:24,bold:true}); texte(sl,`Choix des tenues en déplacement · ${titre}`,M+51,52,520,14,{fontSize:9.5,color:C.muted});
-        texte(sl,`${lot.length} déplacement${lot.length>1?"s":""} sur ${tousDep}${ds.length>PAR_PAGE?` · ${p/PAR_PAGE+1}/${Math.ceil(ds.length/PAR_PAGE)} pour ce club`:""}`,W-M-420,36,420,14,{fontSize:9.5,color:C.muted,align:"right"});
-        texte(sl,"En haut : maillots du club recevant. À gauche : vos maillots.",W-M-420,52,420,14,{fontSize:9.5,color:C.muted,align:"right"});
-        const gx=12, gy=12, cw=(W-2*M-3*gx)/4, ch=(H-78-36-gy)/2;
+        sl.addShape(P.ShapeType.rect,{x:0,y:0,w:i(W),h:i(70),fill:{color:C.bleu},line:{color:C.bleu,width:0}}); bandeP(sl,W*.58,90,95,70);
+        sl.addShape(P.ShapeType.rect,{x:0,y:i(70),w:i(W),h:i(4),fill:{color:C.rouge},line:{color:C.rouge,width:0}});
+        sl.addShape(P.ShapeType.roundRect,{x:i(M),y:i(13),w:i(44),h:i(44),rectRadius:.06,fill:{color:C.blanc},line:{color:C.blanc,width:0}}); imgBox(sl,V.logo,M+4,17,36,36);
+        texte(sl,V.nom,M+56,16,520,28,{fontSize:24,bold:true,color:C.blanc}); texte(sl,`Choix des tenues en déplacement · ${titre}`,M+57,46,520,14,{fontSize:9.5,color:C.clair});
+        const lw2=logo(sl,W-M-58*(I.lnr?I.lnr.w/I.lnr.h:.53),6,58);
+        texte(sl,`${lot.length} déplacement${lot.length>1?"s":""} sur ${tousDep}${ds.length>PAR_PAGE?` · ${p/PAR_PAGE+1}/${Math.ceil(ds.length/PAR_PAGE)} pour ce club`:""}`,W-M-lw2-16-420,28,420,14,{fontSize:9.5,color:C.clair,align:"right"});
+        texte(sl,"En haut : maillots du club recevant. À gauche : vos maillots.",W-M-lw2-16-420,46,420,14,{fontSize:9.5,color:C.clair,align:"right"});
+        const gx=12, gy=12, cw=(W-2*M-3*gx)/4, ch=(H-86-36-gy)/2;
         lot.forEach((m,k)=>{
-          const R=clubs[m.dom], x=M+(k%4)*(cw+gx), y=78+Math.floor(k/4)*(ch+gy), pad=9;
+          const R=clubs[m.dom], x=M+(k%4)*(cw+gx), y=86+Math.floor(k/4)*(ch+gy), pad=9;
           sl.addShape(P.ShapeType.roundRect,{x:i(x),y:i(y),w:i(cw),h:i(ch),rectRadius:.06,fill:{color:C.blanc},line:{color:C.line,width:.7}});
-          sl.addText([{text:"J"+m.j+"  ",options:{color:C.accent,bold:true,fontSize:13}},{text:coupe("Chez "+R.court,cw-2*pad-40,11),options:{color:C.ink,bold:true,fontSize:11}}],{x:i(x+pad),y:i(y+7),w:i(cw-2*pad),h:i(18),fontFace:F,margin:0,valign:"middle"});
+          sl.addText([{text:"J"+m.j+"  ",options:{color:C.rouge,bold:true,fontSize:13}},{text:coupe("Chez "+R.court,cw-2*pad-40,11),options:{color:C.ink,bold:true,fontSize:11}}],{x:i(x+pad),y:i(y+7),w:i(cw-2*pad),h:i(18),fontFace:F,margin:0,valign:"middle"});
           const nc=R.tenues.length, nr=V.tenues.length, rh=64, top=y+28, labH=16;
           const cell=Math.min(40,(cw-2*pad-rh-(nc-1)*3)/nc), cellH=Math.min(30,(ch-(top-y)-30-labH-6-(sel.conseil?18:4)-(nr-1)*3)/nr);
           const x0=x+pad+rh, th=Math.min(30,cell-4);
@@ -908,7 +943,7 @@ function rendreStats(){
   const ps=toutesPaires(), at=ps.filter(p=>p.aTrancher).length; let recu=0,manq=0;
   const cs=listeClubs(etat.comp);
   for(const C of cs) for(const T of tenuesDe(C)){ if(statutDesign(T)==="attendu") manq++; else recu++; }
-  $("#saison").textContent=`LNR · ${etat.comp} · Saison ${D.saison}`;
+  $("#saison").textContent=`${etat.comp} · Saison ${D.saison}`;
   $("#seg-comp").innerHTML=COMPS.map(c=>`<button data-comp="${c}" aria-pressed="${etat.comp===c}">${c}</button>`).join("");
   $("#stats").innerHTML=`<li><b>${cs.length}</b><span>clubs</span></li><li><b>${recu}</b><span>tenues reçues</span></li><li class="${manq?"alerte":""}"><b>${manq}</b><span>non reçues</span></li><li><b>${ps.length}</b><span>paires de maillots</span></li><li class="${at?"alerte":""}"><b>${at}</b><span>à trancher</span></li>`;
   const n=$("#n-trancher"); n.hidden=!at; n.textContent=at;
